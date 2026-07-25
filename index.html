@@ -106,6 +106,21 @@
     .bubble-ai th, .bubble-ai td { border: 1px solid var(--border); padding: 6px 10px; font-size: 13px; }
     .bubble-ai blockquote { border-left: 3px solid var(--border); padding-left: 10px; color: var(--text-muted); margin: 8px 0; }
 
+    /* เอฟเฟกต์เคอร์เซอร์กะพริบขณะ AI กำลังพิมพ์ */
+    .typing-cursor {
+      display: inline-block;
+      width: 6px;
+      height: 15px;
+      background-color: var(--accent);
+      margin-left: 3px;
+      vertical-align: middle;
+      animation: blink 0.7s infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
     .thinking-box { background-color: var(--bubble-ai-bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
     .thinking-box summary { padding: 8px 12px; font-size: 12px; color: var(--text-muted); cursor: pointer; user-select: none; }
     .thinking-box summary:hover { color: var(--text-main); background: #e9eaec; }
@@ -712,15 +727,81 @@
       input.focus();
 
       if (res.success) {
-        appendAIMsgUI(res.thinking, res.reply, Date.now(), true, sourceLabel);
         google.script.run.saveChatMessage(currentSessionId, 'assistant', res.reply, res.thinking, sourceLabel || "");
         
         if (session && session.messages) {
-          session.messages.push({ role: 'assistant', thinking: res.thinking, content: res.reply, timestamp: Date.now(), source: sourceLabel });
+          session.messages.push({ 
+            role: 'assistant', 
+            thinking: res.thinking, 
+            content: res.reply, 
+            timestamp: Date.now(), 
+            source: sourceLabel 
+          });
         }
+
+        // เรียกเอฟเฟกต์พิมพ์ทีละตัวอักษรสำหรับข้อความใหม่
+        appendAIMsgWithStreamingUI(res.thinking, res.reply, Date.now(), sourceLabel);
       } else {
         appendAIMsgUI('', res.reply, Date.now(), false, null);
       }
+    }
+
+    // ฟังก์ชันสร้างกล่องข้อความ AI แล้วค่อยๆ พิมพ์ออกมาทีละตัว (Typewriter Streaming)
+    function appendAIMsgWithStreamingUI(thinking, fullText, ts, sourceLabel) {
+      const body = document.getElementById('chat-body');
+      const div = document.createElement('div');
+      div.className = 'msg-row ai';
+
+      let thinkingHtml = '';
+      if (thinking) {
+        thinkingHtml = `
+          <details class="thinking-box">
+            <summary>🧠 Thinking Process (กระบวนการคิด)</summary>
+            <div class="thinking-content">${escapeHtml(thinking)}</div>
+          </details>`;
+      }
+
+      const msgId = 'ai-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+      
+      div.innerHTML = `${thinkingHtml}<div class="bubble-ai" id="${msgId}" data-raw="${encodeURIComponent(fullText)}"></div>
+        <div class="msg-meta" id="meta-${msgId}"><span>${formatTime(ts)}</span></div>`;
+      
+      body.appendChild(div);
+      body.scrollTop = body.scrollHeight;
+
+      let index = 0;
+      const speed = 12; // ความเร็วการพิมพ์ (12ms ต่อตัวอักษร)
+      const bubbleEl = document.getElementById(msgId);
+      const cursorHtml = '<span class="typing-cursor"></span>';
+
+      const timer = setInterval(() => {
+        index++;
+        const currentText = fullText.substring(0, index);
+        bubbleEl.innerHTML = renderMarkdownSafe(currentText) + cursorHtml;
+        
+        body.scrollTop = body.scrollHeight;
+
+        if (index >= fullText.length) {
+          clearInterval(timer);
+          
+          bubbleEl.innerHTML = renderMarkdownSafe(fullText);
+          
+          if (window.hljs) {
+            div.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+          }
+
+          const metaEl = document.getElementById('meta-' + msgId);
+          if (metaEl) {
+            let actionsHtml = `<span>${formatTime(ts)}</span>
+              <button class="msg-action" onclick="copyMsg('${msgId}')"><i class="fa-regular fa-copy"></i> คัดลอก</button>
+              <button class="msg-action" onclick="regenerateLast()"><i class="fa-solid fa-rotate"></i> ตอบใหม่</button>`;
+            if (sourceLabel) {
+              actionsHtml += `<span class="source-badge"><i class="fa-solid fa-satellite-dish"></i> ${escapeHtml(sourceLabel)}</span>`;
+            }
+            metaEl.innerHTML = actionsHtml;
+          }
+        }
+      }, speed);
     }
 
     function appendToolTraceUI() {
