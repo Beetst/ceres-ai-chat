@@ -60,12 +60,12 @@
     .btn-clear-all:hover { color: var(--danger); border-color: var(--danger); }
 
     .chat-main { flex: 1; display: flex; flex-direction: column; background-color: var(--bg-main); min-width: 0; }
-    .main-header { height: 55px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background-color: #ffffff; flex-shrink: 0; }
+    .main-header { height: 55px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background-color: #ffffff; flex-shrink: 0; gap: 8px; }
     .header-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .header-title { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .btn-hamburger { display: none; }
 
-    .model-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .model-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
     .persona-selector {
       background: var(--bg-sidebar); 
@@ -77,6 +77,10 @@
       outline: none; 
       cursor: pointer;
       font-weight: 500;
+      max-width: 170px;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      white-space: nowrap;
     }
     .persona-selector:focus { border-color: var(--accent); }
 
@@ -265,6 +269,7 @@
     .input-container textarea { flex: 1; background: transparent; border: none; color: var(--text-main); font-size: 15px; outline: none; resize: none; max-height: 140px; line-height: 1.5; padding: 7px 0; font-family: inherit; }
     .input-container textarea::placeholder { color: var(--text-muted); }
 
+    /* 📱 Mobile Display Fixes */
     @media (max-width: 800px) {
       .sidebar-left {
         position: fixed; top: 0; left: 0; bottom: 0; width: 82%; max-width: 300px;
@@ -272,7 +277,9 @@
       }
       .sidebar-left.open { transform: translateX(0); }
       .btn-hamburger { display: flex; }
-      .header-title span.full-title { display: none; }
+      .header-title { display: none; } /* ⚡ ซ่อนป้ายชื่อบนมือถือ เพื่อไม่ให้บัง Dropdown */
+      .chat-pill-badge { display: none; }
+      .persona-selector { max-width: 140px; font-size: 11.5px; } /* ⚡ ย่อขอบเขตกล่องเลือกบทบาท */
       .msg-row { max-width: 90%; }
       .chat-body { padding: 14px; }
       .chat-footer { padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); }
@@ -698,7 +705,7 @@
       if (content) {
         content.innerHTML = '';
         content.textContent = realThinking;
-        content.style.display = 'block'; // ให้แสดงข้อความปกติกรณีเปิดกดขยาย
+        content.style.display = 'block';
       }
 
       return container;
