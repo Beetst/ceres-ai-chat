@@ -1,1 +1,880 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ceres AI Chat</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #ffffff;
+      --bg-sidebar: #f7f7f8;
+      --bg-input: #f3f4f6;
+      --border: #e5e7eb;
+      --text-main: #1f2937;
+      --text-muted: #6b7280;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-soft: #eff6ff;
+      --bubble-ai-bg: #f3f4f6;
+      --bubble-user-bg: #2563eb;
+      --send-btn: #2563eb; 
+      --send-btn-hover: #1d4ed8;
+      --danger: #dc2626;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body { background-color: var(--bg-main); color: var(--text-main); height: 100vh; height: 100dvh; display: flex; overflow: hidden; }
 
+    .app-container { display: flex; width: 100%; height: 100%; position: relative; }
+
+    .sidebar-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,0.35); z-index: 40; display: none; }
+    .sidebar-backdrop.open { display: block; }
+
+    .sidebar-left { width: 270px; background-color: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; z-index: 50; transition: transform 0.25s ease; }
+    .brand { padding: 18px 16px; font-weight: bold; font-size: 16px; color: var(--accent); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .brand-title { display: flex; align-items: center; gap: 10px; }
+    .btn-icon { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 8px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+    .btn-icon:hover { color: var(--text-main); background: var(--border); }
+
+    .btn-new-chat { margin: 0 12px 10px; background-color: var(--accent); color: #fff; border: none; padding: 11px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; }
+    .btn-new-chat:hover { background-color: var(--accent-hover); }
+
+    .search-box { margin: 0 12px 10px; position: relative; }
+    .search-box input { width: 100%; background: #ffffff; border: 1px solid var(--border); color: var(--text-main); font-size: 13px; padding: 9px 10px 9px 30px; border-radius: 8px; outline: none; }
+    .search-box input:focus { border-color: var(--accent); }
+    .search-box i { position: absolute; left: 10px; top: 11px; color: var(--text-muted); font-size: 12px; }
+
+    .chat-history { flex: 1; overflow-y: auto; padding: 0 8px; }
+    .history-item { padding: 10px 12px; font-size: 13px; color: #374151; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; transition: background 0.2s; }
+    .history-item:hover { background-color: #ececee; }
+    .history-item.active { background-color: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .history-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 175px; display: flex; align-items: center; gap: 8px; }
+    .btn-delete-chat { color: var(--text-muted); opacity: 0; transition: opacity 0.2s; padding: 2px 6px; }
+    .history-item:hover .btn-delete-chat { opacity: 1; }
+    .btn-delete-chat:hover { color: var(--danger); }
+
+    .sidebar-footer { padding: 10px 12px; border-top: 1px solid var(--border); }
+    .btn-clear-all { width: 100%; background: none; border: 1px solid var(--border); color: var(--text-muted); padding: 9px; border-radius: 8px; cursor: pointer; font-size: 12px; }
+    .btn-clear-all:hover { color: var(--danger); border-color: var(--danger); }
+
+    .chat-main { flex: 1; display: flex; flex-direction: column; background-color: var(--bg-main); min-width: 0; }
+    .main-header { height: 55px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background-color: #ffffff; flex-shrink: 0; }
+    .header-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .header-title { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .btn-hamburger { display: none; }
+
+    .model-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+    .persona-selector {
+      background: var(--bg-sidebar); 
+      border: 1px solid var(--border); 
+      border-radius: 8px; 
+      font-size: 12.5px; 
+      padding: 6px 10px; 
+      color: var(--text-main); 
+      outline: none; 
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .persona-selector:focus {
+      border-color: var(--accent);
+    }
+
+    .status-badge { font-size: 11px; padding: 4px 9px; border-radius: 12px; display: flex; align-items: center; gap: 6px; font-weight: 500; white-space: nowrap; }
+    .status-badge.loading { background: #fef9c3; color: #92650a; border: 1px solid #eab308; }
+    .status-badge.ready { background: #dcfce7; color: #15803d; border: 1px solid #16a34a; }
+    .status-badge.error { background: #fee2e2; color: #b91c1c; border: 1px solid #dc2626; }
+
+    .chat-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; -webkit-overflow-scrolling: touch; }
+
+    .msg-row { display: flex; flex-direction: column; max-width: 80%; }
+    .msg-row.user { align-self: flex-end; }
+    .msg-row.ai { align-self: flex-start; }
+
+    .bubble-user { background-color: var(--bubble-user-bg); color: #ffffff; padding: 12px 16px; border-radius: 16px 16px 2px 16px; font-size: 14px; line-height: 1.5; word-break: break-word; }
+    .bubble-ai { background-color: var(--bubble-ai-bg); border: 1px solid var(--border); color: var(--text-main); padding: 14px 18px; border-radius: 16px 16px 16px 2px; font-size: 14px; line-height: 1.65; word-break: break-word; }
+    .bubble-ai p { margin: 0 0 10px; }
+    .bubble-ai p:last-child { margin-bottom: 0; }
+    .bubble-ai ul, .bubble-ai ol { margin: 6px 0 10px 20px; }
+    .bubble-ai h1, .bubble-ai h2, .bubble-ai h3 { margin: 10px 0 8px; color: var(--accent-hover); }
+    .bubble-ai code { background: #e5e7eb; padding: 2px 6px; border-radius: 4px; font-size: 12.5px; }
+    .bubble-ai pre { background: #ffffff; border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-x: auto; margin: 8px 0; }
+    .bubble-ai pre code { background: none; padding: 0; }
+    .bubble-ai table { border-collapse: collapse; margin: 8px 0; width: 100%; }
+    .bubble-ai th, .bubble-ai td { border: 1px solid var(--border); padding: 6px 10px; font-size: 13px; }
+    .bubble-ai blockquote { border-left: 3px solid var(--border); padding-left: 10px; color: var(--text-muted); margin: 8px 0; }
+
+    .thinking-box { background-color: var(--bubble-ai-bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+    .thinking-box summary { padding: 8px 12px; font-size: 12px; color: var(--text-muted); cursor: pointer; user-select: none; }
+    .thinking-box summary:hover { color: var(--text-main); background: #e9eaec; }
+    .thinking-content { padding: 10px 14px; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); font-family: monospace; white-space: pre-wrap; background-color: #ffffff; }
+
+    .msg-meta { display: flex; align-items: center; gap: 12px; margin-top: 4px; font-size: 11px; color: var(--text-muted); flex-wrap: wrap; }
+    .msg-row.user .msg-meta { justify-content: flex-end; }
+    .msg-action { cursor: pointer; color: var(--text-muted); background: none; border: none; font-size: 11px; display: flex; align-items: center; gap: 4px; padding: 2px; }
+    .msg-action:hover { color: var(--accent); }
+
+    .chat-pill-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background-color: #eff6ff; 
+      border: 1px solid #bfdbfe; 
+      padding: 8px 18px;         
+      border-radius: 9999px;     
+      color: #1e40af;            
+      font-weight: 600;
+      font-size: 14.5px;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.04);
+      user-select: none;
+      cursor: default;           
+    }
+    
+    .chat-pill-badge i {
+      font-size: 17px;
+      color: #2563eb;            
+    }
+
+    .btn-send {
+      background-color: var(--send-btn);
+      color: white;
+      border: none;
+      padding: 0 16px;           
+      height: 38px;
+      border-radius: 9999px;     
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;                  
+      font-weight: 600;
+      font-size: 13.5px;
+      flex-shrink: 0;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.15);
+    }
+    
+    .btn-send:hover {
+      background-color: var(--send-btn-hover);
+      box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
+    }
+    
+    .btn-send:disabled {
+      background-color: #d1d5db;
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+
+    .footer-hint {
+      font-size: 10.5px;
+      color: #9ca3af;            
+      margin-top: 8px;
+      text-align: center;        
+      display: block;            
+      font-weight: 400;
+      opacity: 0.85;
+      user-select: none;
+    }
+
+    .source-badge { display: inline-flex; align-items: center; gap: 5px; background: var(--accent-soft); color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 10px; padding: 3px 9px; font-size: 10.5px; font-weight: 600; }
+
+    .chat-footer { padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); background-color: #ffffff; border-top: 1px solid var(--border); flex-shrink: 0; }
+    
+    .input-container { 
+      background-color: var(--bg-input); 
+      border: 1px solid var(--border); 
+      border-radius: 12px; 
+      padding: 8px 8px 8px 14px; 
+      display: flex; 
+      align-items: flex-end; 
+      gap: 10px; 
+      margin-left: 48px;  
+      margin-right: 48px; 
+    }
+    .input-container:focus-within { border-color: var(--accent); }
+    .input-container textarea { flex: 1; background: transparent; border: none; color: var(--text-main); font-size: 15px; outline: none; resize: none; max-height: 140px; line-height: 1.5; padding: 7px 0; font-family: inherit; }
+    .input-container textarea::placeholder { color: var(--text-muted); }
+
+    @media (max-width: 800px) {
+      .sidebar-left {
+        position: fixed; top: 0; left: 0; bottom: 0; width: 82%; max-width: 300px;
+        transform: translateX(-100%); box-shadow: 2px 0 16px rgba(0,0,0,0.15);
+      }
+      .sidebar-left.open { transform: translateX(0); }
+      .btn-hamburger { display: flex; }
+      .header-title span.full-title { display: none; }
+      .msg-row { max-width: 90%; }
+      .chat-body { padding: 14px; }
+      .chat-footer { padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); }
+      .status-badge { font-size: 10px; padding: 4px 7px; }
+      .status-badge span.status-text { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+
+    <div class="sidebar-left" id="sidebar-left">
+      <div class="brand">
+        <div class="brand-title"><i class="fa-solid fa-robot"></i> Ceres AI Chat</div>
+      </div>
+      <button class="btn-new-chat" onclick="createNewChat()"><i class="fa-solid fa-plus"></i> แชทใหม่</button>
+
+      <div class="search-box">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="search-input" placeholder="ค้นหาแชท..." oninput="renderHistoryList()">
+      </div>
+
+      <div class="chat-history" id="chat-history-list"></div>
+
+      <div class="sidebar-footer">
+        <button class="btn-clear-all" onclick="clearAllChats()"><i class="fa-solid fa-trash-can"></i> ล้างแชททั้งหมด</button>
+      </div>
+    </div>
+
+    <div class="chat-main">
+      <div class="main-header">
+        <div class="header-left">
+          <button class="btn-icon btn-hamburger" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+          <div class="header-title">
+            <div class="chat-pill-badge">
+              <i class="fa-regular fa-comment-dots"></i>
+              <span class="full-title">สนทนากับ Ceres AI</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="model-controls">
+          <!-- Dropdown เมนูสำหรับเลือกสลับสวมบทบาท AI (Persona Switcher) -->
+          <select id="persona-select" class="persona-selector" onchange="changePersona(this.value)">
+            <option value="default">🤖 Ceres AI (ทั่วไป)</option>
+            <option value="coder">💻 ผู้เชี่ยวชาญการเขียนโค้ด</option>
+            <option value="tutor">🇬🇧 ครูสอนภาษาอังกฤษ</option>
+            <option value="counselor">🧘 นักจิตวิทยาคอยรับฟัง</option>
+            <option value="marketing">📈 นักการตลาดสร้างสรรค์</option>
+            <option value="writer">✍️ นักเขียนคอนเทนต์</option>
+          </select>
+
+          <button class="btn-icon" title="รีเฟรชโมเดล" onclick="loadModels()"><i class="fa-solid fa-rotate"></i></button>
+          <div id="status-badge" class="status-badge loading">
+            <i class="fa-solid fa-circle-notch fa-spin"></i> <span class="status-text">กำลังโหลด</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-body" id="chat-body"></div>
+
+      <div class="chat-footer">
+        <div class="input-container">
+          <textarea id="user-input" rows="1" placeholder="พิมพ์ข้อความที่นี่"
+            onkeydown="handleInputKeydown(event)" oninput="autoResize(this)"></textarea>
+          <button class="btn-send" id="send-btn" onclick="sendMsg()"><i class="fa-solid fa-paper-plane"></i> <span>ส่ง</span></button>
+        </div>
+        <div class="footer-hint">Ceres อาจตอบผิดพลาดได้ ควรตรวจสอบข้อมูลสำคัญอีกครั้งค่ะ</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>
+    let sessions = [];
+    let currentSessionId = null;
+    let activeModel = "";
+
+    const TOOL_META = {
+      weather: { name: 'สภาพอากาศ', icon: '🌤️' },
+      crypto: { name: 'ราคาคริปโต', icon: '🪙' },
+      currency: { name: 'อัตราแลกเปลี่ยน', icon: '💱' },
+      stock: { name: 'ราคาหุ้น', icon: '📈' },
+      news: { name: 'ข่าวล่าสุด', icon: '📰' },
+      browse: { name: 'เปิดเว็บไซต์', icon: '🌐' },
+      wiki: { name: 'ค้นหา Wikipedia', icon: '📖' },
+      hackernews: { name: 'ข่าวไอที HackerNews', icon: '💻' },
+      country: { name: 'ข้อมูลประเทศ', icon: '🗺️' },
+      ip_lookup: { name: 'สืบค้นพิกัด IP', icon: '📍' }
+    };
+
+    window.onload = function() {
+      loadSessionsFromDb();
+      loadModels();
+      configureMarked();
+    };
+
+    function configureMarked() {
+      marked.setOptions({
+        breaks: true,
+        gfm: true,
+        highlight: function(code, lang) {
+          try {
+            if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang }).value;
+            return hljs.highlightAuto(code).value;
+          } catch (e) { return code; }
+        }
+      });
+    }
+
+    function toggleSidebar() {
+      document.getElementById('sidebar-left').classList.toggle('open');
+      document.getElementById('sidebar-backdrop').classList.toggle('open');
+    }
+    function closeSidebar() {
+      document.getElementById('sidebar-left').classList.remove('open');
+      document.getElementById('sidebar-backdrop').classList.remove('open');
+    }
+    function closeSidebarIfMobile() {
+      if (window.innerWidth <= 800) closeSidebar();
+    }
+
+    function loadSessionsFromDb() {
+      google.script.run
+        .withSuccessHandler((dbSessions) => {
+          sessions = dbSessions || [];
+          if (sessions.length === 0) {
+            createNewChat();
+          } else {
+            currentSessionId = sessions[0].id;
+            renderHistoryList();
+            renderCurrentChat();
+          }
+        })
+        .withFailureHandler((err) => {
+          console.error("สืบค้นห้องแชทล้มเหลว:", err);
+          createNewChat();
+        })
+        .getUserSessions();
+    }
+
+    function createNewChat() {
+      const tempTitle = "แชทใหม่";
+      google.script.run
+        .withSuccessHandler((newSession) => {
+          sessions.unshift(newSession);
+          currentSessionId = newSession.id;
+          renderHistoryList();
+          renderCurrentChat();
+          closeSidebarIfMobile();
+        })
+        .withFailureHandler((err) => {
+          alert("ไม่สามารถสร้างห้องแชทใหม่บนฐานข้อมูลได้: " + err);
+        })
+        .createUserSession(tempTitle);
+    }
+
+    function switchSession(id) {
+      closeSidebarIfMobile();
+      if (currentSessionId === id) return;
+      currentSessionId = id;
+      renderHistoryList();
+      renderCurrentChat();
+    }
+
+    function deleteSession(e, id) {
+      e.stopPropagation();
+      if (!confirm('ต้องการลบห้องสนทนานี้ใช่หรือไม่คะ?')) return;
+      
+      google.script.run
+        .withSuccessHandler(() => {
+          sessions = sessions.filter(s => s.id !== id);
+          if (sessions.length === 0) {
+            createNewChat();
+          } else {
+            if (currentSessionId === id) currentSessionId = sessions[0].id;
+            renderHistoryList();
+            renderCurrentChat();
+          }
+        })
+        .withFailureHandler((err) => {
+          alert("ลบห้องแชทขัดข้อง: " + err);
+        })
+        .deleteUserSession(id);
+    }
+
+    function clearAllChats() {
+      if (!confirm('ต้องการลบแชททั้งหมดของคุณใช่หรือไม่คะ? การกระทำนี้จะล้างข้อมูลทุกอย่างออกจากระบบอย่างปลอดภัย')) return;
+      
+      let deleteCount = 0;
+      sessions.forEach(s => {
+        google.script.run.withSuccessHandler(() => {
+          deleteCount++;
+          if (deleteCount === sessions.length) {
+            sessions = [];
+            createNewChat();
+          }
+        }).deleteUserSession(s.id);
+      });
+    }
+
+    function getCurrentSession() {
+      return sessions.find(s => s.id === currentSessionId);
+    }
+
+    function renderHistoryList() {
+      const listContainer = document.getElementById('chat-history-list');
+      const query = (document.getElementById('search-input').value || '').toLowerCase().trim();
+      listContainer.innerHTML = '';
+
+      sessions
+        .filter(s => !query || s.title.toLowerCase().includes(query))
+        .forEach(s => {
+          const item = document.createElement('div');
+          item.className = `history-item ${s.id === currentSessionId ? 'active' : ''}`;
+          item.onclick = () => switchSession(s.id);
+
+          item.innerHTML = `
+            <div class="history-title">
+              <i class="fa-regular fa-comments"></i>
+              <span>${escapeHtml(s.title)}</span>
+            </div>
+            <i class="fa-solid fa-trash btn-delete-chat" title="ลบแชท" onclick="deleteSession(event, '${s.id}')"></i>
+          `;
+          listContainer.appendChild(item);
+        });
+    }
+
+    // ฟังก์ชันสั่งสลับเปลี่ยนบทบาทประจำห้องแชทปัจจุบัน
+    function changePersona(personaId) {
+      if (!currentSessionId) return;
+
+      const badge = document.getElementById('status-badge');
+      const originalHtml = badge.innerHTML;
+      updateStatus('loading', '<i class="fa-solid fa-circle-notch fa-spin"></i> <span class="status-text">กำลังสลับบทบาท</span>');
+
+      google.script.run
+        .withSuccessHandler(() => {
+          const session = getCurrentSession();
+          if (session) {
+            session.persona = personaId;
+          }
+          renderCurrentChat();
+          updateStatus('ready', '<i class="fa-solid fa-circle-check"></i> <span class="status-text">พร้อมใช้งาน</span>');
+        })
+        .withFailureHandler((err) => {
+          alert("ไม่สามารถเปลี่ยนบทบาทได้: " + err);
+          badge.innerHTML = originalHtml;
+        })
+        .updateSessionPersona(currentSessionId, personaId);
+    }
+
+    function renderCurrentChat() {
+      const body = document.getElementById('chat-body');
+      body.innerHTML = '';
+      
+      if (!currentSessionId) return;
+      
+      const session = getCurrentSession();
+      if (session) {
+        // ซิงค์การแสดงผลของตัวเลือกบทบาทแชทใน Dropdown ให้ตรงตามห้องที่กำลังดูอยู่
+        document.getElementById('persona-select').value = session.persona || "default";
+      }
+
+      google.script.run
+        .withSuccessHandler((messages) => {
+          if (session) {
+            session.messages = messages || [];
+            
+            if (session.messages.length === 0) {
+              const welcomeMsg = "สวัสดีค่ะ! Ceres พร้อมช่วยงานแล้วค่ะ พิมพ์ข้อความสอบถามได้เลยนะคะ ✨";
+              appendAIMsgUI('', welcomeMsg, Date.now(), false, null);
+            } else {
+              session.messages.forEach((m, idx) => {
+                if (m.role === 'user') {
+                  appendUserMsgUI(m.content, m.timestamp);
+                } else if (m.role === 'assistant') {
+                  appendAIMsgUI(m.thinking, m.content, m.timestamp, idx === session.messages.length - 1, m.source || null);
+                }
+              });
+            }
+          }
+        })
+        .withFailureHandler((err) => {
+          console.error("โหลดข้อความแชทจากฐานข้อมูลขัดข้อง:", err);
+        })
+        .getChatMessages(currentSessionId);
+    }
+
+    function loadModels() {
+      updateStatus('loading', '<i class="fa-solid fa-circle-notch fa-spin"></i> <span class="status-text">กำลังโหลด</span>');
+      activeModel = "";
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (res.success && res.models && res.models.length > 0) {
+            activeModel = res.models[0];
+            updateStatus('ready', '<i class="fa-solid fa-circle-check"></i> <span class="status-text">พร้อมใช้งาน</span>');
+          } else {
+            updateStatus('error', '<i class="fa-solid fa-triangle-exclamation"></i> <span class="status-text">ไม่พบโมเดล</span>');
+          }
+        })
+        .withFailureHandler(() => {
+          updateStatus('error', '<i class="fa-solid fa-xmark"></i> <span class="status-text">ขัดข้อง</span>');
+        })
+        .getAvailableModels();
+    }
+
+    function updateStatus(type, htmlContent) {
+      const badge = document.getElementById('status-badge');
+      badge.className = `status-badge ${type}`;
+      badge.innerHTML = htmlContent;
+    }
+
+    function autoResize(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+    }
+
+    function executePipeline(text, isRegenerate = false) {
+      const input = document.getElementById('user-input');
+      const btn = document.getElementById('send-btn');
+      const selectedModel = activeModel;
+
+      if (!selectedModel) {
+        alert("กรุณาเปิดโมเดลในคลาวด์/LM Studio และกดรีเฟรชก่อนนะคะ");
+        return;
+      }
+
+      input.disabled = true;
+      btn.disabled = true;
+
+      const session = getCurrentSession();
+
+      if (!isRegenerate) {
+        appendUserMsgUI(text, Date.now());
+        google.script.run.saveChatMessage(currentSessionId, 'user', text, '', '');
+        input.value = '';
+        autoResize(input);
+      }
+
+      const traceId = appendToolTraceUI();
+      // ขั้นที่ 0: เริ่มต้นวิเคราะห์คำถามและดึงโปรไฟล์จากฐานข้อมูล Firestore
+      setToolTraceStep(traceId, 0, 'active', 'กำลังวิเคราะห์บริบทคำถาม (ดึงข้อมูลโปรไฟล์ผู้ใช้และประวัติการคุยย้อนหลังจาก Firestore)');
+
+      google.script.run
+        .withSuccessHandler((plan) => {
+          if (!plan || plan.tool === 'none') {
+            setToolTraceStep(traceId, 0, 'done', 'วิเคราะห์แล้ว: คำถามทั่วไป (คุยสนทนาทั่วไป / ไม่ต้องใช้ข้อมูลจากระบบภายนอก)');
+            removeMsg(traceId);
+            const loadingId = appendLoadingMsg();
+            requestAIReply(text, selectedModel, session, loadingId, input, btn, null);
+            return;
+          }
+
+          const label = TOOL_META[plan.tool] || { name: plan.tool, icon: '🔧' };
+          const TOOL_SOURCES = {
+            weather: 'Open-Meteo & Geocoding API',
+            crypto: 'CoinGecko Simple Price API',
+            currency: 'Frankfurter Exchange Rate API',
+            stock: 'Yahoo Finance API',
+            news: 'Google News RSS Feed Search',
+            browse: 'ระบบสกัดและทำความสะอาดเนื้อหาเว็บ (Web Scraping Engine)',
+            wiki: 'Wikipedia API',
+            hackernews: 'HackerNews Official API',
+            country: 'REST Countries Geographic API',
+            ip_lookup: 'IP-API geographic engine'
+          };
+          const sourceDb = TOOL_SOURCES[plan.tool] || 'ระบบภายนอก';
+
+          setToolTraceStep(traceId, 0, 'done', 'วิเคราะห์เจตนาเรียบร้อย: ตรวจพบความต้องการข้อมูลเชิงลึกเกี่ยวกับ ' + label.name);
+          setToolTraceStep(traceId, 1, 'active', 'กำลังเชื่อมต่อและดึงข้อมูลดิบล่าสุดผ่าน ' + sourceDb);
+
+          google.script.run
+            .withSuccessHandler((toolResult) => {
+              if (!toolResult.success) {
+                setToolTraceStep(traceId, 1, 'error', 'เกิดข้อผิดพลาดในการดึงข้อมูลจาก ' + sourceDb + ': ' + toolResult.summary);
+                setTimeout(() => removeMsg(traceId), 2000);
+                const loadingId = appendLoadingMsg();
+                requestAIReply(text, selectedModel, session, loadingId, input, btn, null);
+                return;
+              }
+              
+              setToolTraceStep(traceId, 1, 'done', 'ดึงข้อมูลสำเร็จ (ผ่านแหล่งอ้างอิง: ' + toolResult.source + ')');
+              setToolTraceStep(traceId, 2, 'active', 'กำลังส่งต่อชุดข้อมูลจริงไปยังโมเดลเพื่อเรียบเรียงและสรุปคำตอบให้สั้นกระชับ');
+
+              google.script.run
+                .withSuccessHandler((res) => {
+                  removeMsg(traceId);
+                  finishAIReply(res, text, session, input, btn, toolResult.source);
+                })
+                .withFailureHandler((err) => {
+                  removeMsg(traceId);
+                  input.disabled = false; btn.disabled = false;
+                  appendAIMsgUI('', 'เกิดข้อผิดพลาดในการเชื่อมต่อระบบค่ะ: ' + err, Date.now(), false, null);
+                })
+                .sendMessageToAIWithTool(currentSessionId, text, selectedModel, toolResult, {});
+            })
+            .withFailureHandler((err) => {
+              setToolTraceStep(traceId, 1, 'error', 'สัญญาณดึงข้อมูลจาก ' + sourceDb + ' ขัดข้อง: ' + err);
+              setTimeout(() => removeMsg(traceId), 2000);
+              const loadingId = appendLoadingMsg();
+              requestAIReply(text, selectedModel, session, loadingId, input, btn, null);
+            })
+            .fetchToolData(plan.tool, plan.params);
+        })
+        .withFailureHandler((err) => {
+          setToolTraceStep(traceId, 0, 'error', 'การวิเคราะห์เจตนาล้มเหลว: ' + err);
+          setTimeout(() => removeMsg(traceId), 2000);
+          const loadingId = appendLoadingMsg();
+          requestAIReply(text, selectedModel, session, loadingId, input, btn, null);
+        })
+        .planToolUse(text, selectedModel);
+    }
+
+    function sendMsg() {
+      const input = document.getElementById('user-input');
+      const text = input.value.trim();
+
+      if (!text) return;
+
+      const session = getCurrentSession();
+      
+      // การซิงค์และเปลี่ยนชื่อหัวข้อห้องแชทลงสู่ Firestore ตลอดไปจากประโยคคำถามแรกสุด
+      if (session && (session.title === 'แชทใหม่' || !session.title)) {
+        const newTitle = text.length > 20 ? text.substring(0, 20) + '...' : text;
+        session.title = newTitle;
+        renderHistoryList();
+        
+        // ยิงคำสั่งอัปเดตค่าหัวข้อขึ้นสู่ Firebase Firestore เซิร์ฟเวอร์จริงหลังบ้าน
+        google.script.run
+          .withSuccessHandler(() => {
+            console.log("บันทึกข้อมูลหัวข้อแชทถาวรเรียบร้อย");
+          })
+          .withFailureHandler((err) => {
+            console.error("บันทึกหัวข้อแชทขัดข้อง:", err);
+          })
+          .updateSessionTitle(session.id, newTitle);
+      }
+
+      executePipeline(text, false);
+    }
+
+    function requestAIReply(text, selectedModel, session, loadingId, input, btn, sourceLabel) {
+      google.script.run
+        .withSuccessHandler((res) => {
+          removeMsg(loadingId);
+          finishAIReply(res, text, session, input, btn, sourceLabel);
+        })
+        .withFailureHandler((err) => {
+          removeMsg(loadingId);
+          input.disabled = false;
+          btn.disabled = false;
+          appendAIMsgUI('', 'เกิดข้อผิดพลาดในการเชื่อมต่อระบบค่ะ: ' + err, Date.now(), false, null);
+        })
+        .sendMessageToAI(currentSessionId, text, selectedModel, {});
+    }
+
+    function finishAIReply(res, text, session, input, btn, sourceLabel) {
+      input.disabled = false;
+      btn.disabled = false;
+      input.focus();
+
+      if (res.success) {
+        appendAIMsgUI(res.thinking, res.reply, Date.now(), true, sourceLabel);
+        google.script.run.saveChatMessage(currentSessionId, 'assistant', res.reply, res.thinking, sourceLabel || "");
+        
+        if (session && session.messages) {
+          session.messages.push({ role: 'assistant', thinking: res.thinking, content: res.reply, timestamp: Date.now(), source: sourceLabel });
+        }
+      } else {
+        appendAIMsgUI('', res.reply, Date.now(), false, null);
+      }
+    }
+
+    // ฟังก์ชันสร้างกล่องข้อความติดตามงานแบบสรุปรายการขั้นตอน (Thinking Trace Block)
+    function appendToolTraceUI() {
+      const id = 'trace-' + Date.now();
+      const body = document.getElementById('chat-body');
+      const div = document.createElement('div');
+      div.className = 'msg-row ai';
+      div.id = id;
+      div.innerHTML = `
+        <div class="bubble-ai" style="color: var(--text-main); display: flex; flex-direction: column; gap: 10px; padding: 14px 18px; width: 100%; border-radius: 12px;">
+          <div style="font-weight: bold; font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); padding-bottom: 6px;">
+            <i class="fa-solid fa-spinner fa-spin"></i> แผนภาพกระบวนการคิดและสืบค้นข้อมูลจริง (Thinking Process & Data Trace)
+          </div>
+          <div class="step-text" style="font-size: 12.5px; color: var(--text-main); line-height: 1.6; display: flex; flex-direction: column; gap: 6px;">
+          </div>
+        </div>
+      `;
+      body.appendChild(div);
+      body.scrollTop = body.scrollHeight;
+      return id;
+    }
+
+    // ฟังก์ชันวาดและอัปเดตขั้นตอนแต่ละขั้นแบบตรวจสอบรายข้อสะสมต่อลงมา (Plain Text)
+    function setToolTraceStep(traceId, stepIndex, state, text) {
+      const container = document.getElementById(traceId);
+      if (!container) return;
+      const stepsContainer = container.querySelector('.step-text');
+      if (!stepsContainer) return;
+
+      let stepEl = document.getElementById(traceId + '-step-' + stepIndex);
+      if (!stepEl) {
+        stepEl = document.createElement('div');
+        stepEl.id = traceId + '-step-' + stepIndex;
+        stepEl.style.display = 'flex';
+        stepEl.style.alignItems = 'flex-start';
+        stepEl.style.gap = '8px';
+        stepsContainer.appendChild(stepEl);
+      }
+
+      let iconHtml = '';
+      if (state === 'active') {
+        iconHtml = '<i class="fa-solid fa-spinner fa-spin" style="color: var(--text-muted); font-size: 11px; margin-top: 4px;"></i>';
+        stepEl.style.color = 'var(--text-main)';
+        stepEl.style.fontWeight = '500';
+      } else if (state === 'done') {
+        iconHtml = '<i class="fa-solid fa-circle-check" style="color: #16a34a; font-size: 11px; margin-top: 4px;"></i>';
+        stepEl.style.color = 'var(--text-muted)';
+        stepEl.style.fontWeight = '400';
+      } else if (state === 'error') {
+        iconHtml = '<i class="fa-solid fa-circle-exclamation" style="color: var(--danger); font-size: 11px; margin-top: 4px;"></i>';
+        stepEl.style.color = 'var(--danger)';
+        stepEl.style.fontWeight = '400';
+      }
+
+      stepEl.innerHTML = `${iconHtml} <span style="flex: 1;">${escapeHtml(text)}</span>`;
+
+      const body = document.getElementById('chat-body');
+      body.scrollTop = body.scrollHeight;
+    }
+
+    function handleInputKeydown(e) {
+      const isMobile = window.innerWidth <= 800;
+      if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
+        e.preventDefault();
+        sendMsg();
+      }
+    }
+
+    function regenerateLast() {
+      const session = getCurrentSession();
+      const selectedModel = activeModel;
+      if (!selectedModel) { alert("กรุณาเชื่อมต่อโมเดลก่อนนะคะ"); return; }
+
+      let lastUserMsg = null;
+      if (session && session.messages) {
+        for (let i = session.messages.length - 1; i >= 0; i--) {
+          if (session.messages[i].role === 'assistant') { continue; }
+          if (session.messages[i].role === 'user') { lastUserMsg = session.messages[i].content; break; }
+        }
+      }
+      if (!lastUserMsg) return;
+
+      google.script.run
+        .withSuccessHandler(() => {
+          renderCurrentChat();
+          executePipeline(lastUserMsg, true);
+        })
+        .withFailureHandler((err) => {
+          alert("เกิดปัญหาลบคำตอบเดิมออกจากฐานข้อมูล: " + err);
+        })
+        .deleteLastAssistantMessage(currentSessionId);
+    }
+
+    function appendUserMsgUI(text, ts) {
+      const body = document.getElementById('chat-body');
+      const div = document.createElement('div');
+      div.className = 'msg-row user';
+      div.innerHTML = `<div class="bubble-user">${escapeHtml(text)}</div>
+        <div class="msg-meta"><span>${formatTime(ts)}</span></div>`;
+      body.appendChild(div);
+      body.scrollTop = body.scrollHeight;
+    }
+
+    function appendAIMsgUI(thinking, text, ts, showActions, sourceLabel) {
+      const body = document.getElementById('chat-body');
+      const div = document.createElement('div');
+      div.className = 'msg-row ai';
+
+      let thinkingHtml = '';
+      if (thinking) {
+        thinkingHtml = `
+          <details class="thinking-box">
+            <summary>🧠 Thinking Process (กระบวนการคิด)</summary>
+            <div class="thinking-content">${escapeHtml(thinking)}</div>
+          </details>`;
+      }
+
+      const renderedHtml = renderMarkdownSafe(text);
+      const msgId = 'ai-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+
+      let actionsHtml = `<span>${formatTime(ts)}</span>
+        <button class="msg-action" onclick="copyMsg('${msgId}')"><i class="fa-regular fa-copy"></i> คัดลอก</button>`;
+      if (showActions) {
+        actionsHtml += `<button class="msg-action" onclick="regenerateLast()"><i class="fa-solid fa-rotate"></i> ตอบใหม่</button>`;
+      }
+      if (sourceLabel) {
+        actionsHtml += `<span class="source-badge"><i class="fa-solid fa-satellite-dish"></i> ${escapeHtml(sourceLabel)}</span>`;
+      }
+
+      div.innerHTML = `${thinkingHtml}<div class="bubble-ai" id="${msgId}" data-raw="${encodeURIComponent(text)}">${renderedHtml}</div>
+        <div class="msg-meta">${actionsHtml}</div>`;
+      body.appendChild(div);
+
+      if (window.hljs) {
+        div.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+      }
+
+      body.scrollTop = body.scrollHeight;
+    }
+
+    function renderMarkdownSafe(text) {
+      try {
+        return marked.parse(text);
+      } catch (e) {
+        return escapeHtml(text).replace(/\n/g, '<br>');
+      }
+    }
+
+    function removeMsg(id) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    }
+
+    function copyMsg(msgId) {
+      const el = document.getElementById(msgId);
+      if (!el) return;
+      const raw = decodeURIComponent(el.getAttribute('data-raw') || '');
+      navigator.clipboard.writeText(raw).then(() => {
+        const btn = el.parentElement.querySelector('.msg-action');
+        if (btn) {
+          const original = btn.innerHTML;
+          btn.innerHTML = '<i class="fa-solid fa-check"></i> คัดลอกแล้ว';
+          setTimeout(() => btn.innerHTML = original, 1200);
+        }
+      });
+    }
+
+    function appendLoadingMsg() {
+      const id = 'loading-' + Date.now();
+      const body = document.getElementById('chat-body');
+      const div = document.createElement('div');
+      div.className = 'msg-row ai';
+      div.id = id;
+      div.innerHTML = `
+        <div class="bubble-ai" style="color: var(--text-main); display: inline-flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-spinner fa-spin" style="color: var(--text-muted);"></i>
+          <span class="step-text">🧠 กำลังประมวลคำตอบขั้นสุดท้ายโดยอ้างอิงประวัติส่วนบุคคลจาก Firestore</span>
+        </div>
+      `;
+      body.appendChild(div);
+      body.scrollTop = body.scrollHeight;
+      return id;
+    }
+
+    function formatTime(ts) {
+      if (!ts) return '';
+      const d = new Date(ts);
+      return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function escapeHtml(text) {
+      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+  </script>
+</body>
+</html>
