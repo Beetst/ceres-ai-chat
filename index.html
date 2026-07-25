@@ -78,9 +78,7 @@
       cursor: pointer;
       font-weight: 500;
     }
-    .persona-selector:focus {
-      border-color: var(--accent);
-    }
+    .persona-selector:focus { border-color: var(--accent); }
 
     .status-badge { font-size: 11px; padding: 4px 9px; border-radius: 12px; display: flex; align-items: center; gap: 6px; font-weight: 500; white-space: nowrap; }
     .status-badge.loading { background: #fef9c3; color: #92650a; border: 1px solid #eab308; }
@@ -106,7 +104,7 @@
     .bubble-ai th, .bubble-ai td { border: 1px solid var(--border); padding: 6px 10px; font-size: 13px; }
     .bubble-ai blockquote { border-left: 3px solid var(--border); padding-left: 10px; color: var(--text-muted); margin: 8px 0; }
 
-    /* เอฟเฟกต์เคอร์เซอร์กะพริบขณะ AI กำลังพิมพ์ */
+    /* Typing Cursor */
     .typing-cursor {
       display: inline-block;
       width: 6px;
@@ -116,15 +114,78 @@
       vertical-align: middle;
       animation: blink 0.7s infinite;
     }
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    /* 🧠 Claude-style Live Thinking Box Styles */
+    .thinking-box { 
+      background-color: var(--bubble-ai-bg); 
+      border: 1px solid var(--border); 
+      border-radius: 8px; 
+      margin-bottom: 8px; 
+      overflow: hidden; 
+      transition: border-color 0.2s ease;
+    }
+    .thinking-box.live {
+      border-color: var(--accent);
+    }
+    .thinking-box summary { 
+      padding: 8px 12px; 
+      font-size: 12px; 
+      color: var(--text-muted); 
+      cursor: pointer; 
+      user-select: none; 
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .thinking-box summary:hover { color: var(--text-main); background: #e9eaec; }
+    .thinking-box summary .think-label { flex: 1; font-weight: 500; }
+
+    .thinking-content { 
+      padding: 10px 14px; 
+      font-size: 12px; 
+      color: var(--text-muted); 
+      border-top: 1px solid var(--border); 
+      font-family: monospace; 
+      white-space: pre-wrap; 
+      background-color: #ffffff; 
     }
 
-    .thinking-box { background-color: var(--bubble-ai-bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
-    .thinking-box summary { padding: 8px 12px; font-size: 12px; color: var(--text-muted); cursor: pointer; user-select: none; }
-    .thinking-box summary:hover { color: var(--text-main); background: #e9eaec; }
-    .thinking-content { padding: 10px 14px; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); font-family: monospace; white-space: pre-wrap; background-color: #ffffff; }
+    /* วงกลมหมุนแบบ Claude */
+    .think-spinner-ring {
+      width: 13px;
+      height: 13px;
+      border: 2px solid rgba(37, 99, 235, 0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      display: inline-block;
+      animation: spin-ring 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin-ring {
+      to { transform: rotate(360deg); }
+    }
+
+    /* จุดกระพริบสามจุดในเนื้อกล่อง */
+    .think-dots {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 0;
+    }
+    .think-dots span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: var(--text-muted);
+      animation: dot-pulse 1.2s ease-in-out infinite;
+    }
+    .think-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .think-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes dot-pulse {
+      0%, 60%, 100% { opacity: 0.3; transform: scale(0.85); }
+      30% { opacity: 1; transform: scale(1); }
+    }
 
     .msg-meta { display: flex; align-items: center; gap: 12px; margin-top: 4px; font-size: 11px; color: var(--text-muted); flex-wrap: wrap; }
     .msg-row.user .msg-meta { justify-content: flex-end; }
@@ -146,11 +207,7 @@
       user-select: none;
       cursor: default;           
     }
-    
-    .chat-pill-badge i {
-      font-size: 17px;
-      color: #2563eb;            
-    }
+    .chat-pill-badge i { font-size: 17px; color: #2563eb; }
 
     .btn-send {
       background-color: var(--send-btn);
@@ -170,17 +227,8 @@
       transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
       box-shadow: 0 2px 6px rgba(37, 99, 235, 0.15);
     }
-    
-    .btn-send:hover {
-      background-color: var(--send-btn-hover);
-      box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
-    }
-    
-    .btn-send:disabled {
-      background-color: #d1d5db;
-      box-shadow: none;
-      cursor: not-allowed;
-    }
+    .btn-send:hover { background-color: var(--send-btn-hover); box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25); }
+    .btn-send:disabled { background-color: #d1d5db; box-shadow: none; cursor: not-allowed; }
 
     .footer-hint {
       font-size: 10.5px;
@@ -223,6 +271,7 @@
       .msg-row { max-width: 90%; }
       .chat-body { padding: 14px; }
       .chat-footer { padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); }
+      .input-container { margin-left: 0; margin-right: 0; }
       .status-badge { font-size: 10px; padding: 4px 7px; }
       .status-badge span.status-text { display: none; }
     }
@@ -264,7 +313,6 @@
         </div>
 
         <div class="model-controls">
-          <!-- Dropdown เมนูสำหรับเลือกสลับสวมบทบาท AI (Persona Switcher) -->
           <select id="persona-select" class="persona-selector" onchange="changePersona(this.value)">
             <option value="default">🤖 Ceres AI (ทั่วไป)</option>
             <option value="coder">💻 ผู้เชี่ยวชาญการเขียนโค้ด</option>
@@ -298,7 +346,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script>
     // =========================================================================
-    // 🌐 GAS API Configuration & Compatibility Polyfill (สำหรับรันบน GitHub Pages)
+    // 🌐 GAS API Configuration & Compatibility Polyfill (สำหรับ GitHub Pages)
     // =========================================================================
     const GAS_URL = "https://script.google.com/macros/s/AKfycbyjWTQnGyYF-qPn1Ax0G2z_CjebRIqr9DMvz8zQbQsKWjMoPPnqtAabXwXgeiuVRGkF/exec";
 
@@ -309,12 +357,8 @@
       function createGasRunner(successHandler, failureHandler) {
         return new Proxy({}, {
           get(target, prop) {
-            if (prop === 'withSuccessHandler') {
-              return (fn) => createGasRunner(fn, failureHandler);
-            }
-            if (prop === 'withFailureHandler') {
-              return (fn) => createGasRunner(successHandler, fn);
-            }
+            if (prop === 'withSuccessHandler') return (fn) => createGasRunner(fn, failureHandler);
+            if (prop === 'withFailureHandler') return (fn) => createGasRunner(successHandler, fn);
             return function(...args) {
               fetch(GAS_URL, {
                 method: 'POST',
@@ -506,9 +550,7 @@
       google.script.run
         .withSuccessHandler(() => {
           const session = getCurrentSession();
-          if (session) {
-            session.persona = personaId;
-          }
+          if (session) session.persona = personaId;
           renderCurrentChat();
           updateStatus('ready', '<i class="fa-solid fa-circle-check"></i> <span class="status-text">พร้อมใช้งาน</span>');
         })
@@ -550,7 +592,7 @@
           }
         })
         .withFailureHandler((err) => {
-          console.error("โหลดข้อความแชทจากฐานข้อมูลขัดข้อง:", err);
+          console.error("โหลดข้อความแชทขัดข้อง:", err);
         })
         .getChatMessages(currentSessionId);
     }
@@ -585,6 +627,77 @@
       el.style.height = Math.min(el.scrollHeight, 140) + 'px';
     }
 
+    // ⚡ OPTIMIZATION: Heuristic กรองข้อความสั้น/ทักทาย
+    function needsToolCheck(text) {
+      const t = text.trim();
+      if (t.length < 8) return false;
+      const casualRegex = /^(สวัสดี|หวัดดี|ดีครับ|ดีค่ะ|ขอบคุณ|โอเค|ok|okay|555|hello|hi|hey|thanks|thank\s+you|บาย|ฝันดี)/i;
+      if (casualRegex.test(t)) return false;
+      return true;
+    }
+
+    // 🧠 Live Thinking Box Management Functions (Claude Style)
+    function appendLiveThinkingBox() {
+      const id = 'thinking-' + Date.now();
+      const body = document.getElementById('chat-body');
+      const div = document.createElement('div');
+      div.className = 'msg-row ai';
+      div.id = id;
+
+      div.innerHTML = `
+        <details class="thinking-box live" open>
+          <summary>
+            <span class="think-spinner-ring"></span>
+            <span class="think-label" id="${id}-label">Thinking</span>
+          </summary>
+          <div class="thinking-content" id="${id}-status">
+            <span class="think-dots"><span></span><span></span><span></span></span>
+          </div>
+        </details>
+      `;
+      body.appendChild(div);
+      body.scrollTop = body.scrollHeight;
+
+      return { id: id };
+    }
+
+    function setLiveThinkingStatus(handle, label) {
+      if (!handle || !handle.id) return;
+      const labelEl = document.getElementById(handle.id + '-label');
+      if (labelEl) labelEl.textContent = label;
+    }
+
+    function finalizeThinkingBox(handle, realThinking) {
+      if (!handle || !handle.id) return null;
+      const container = document.getElementById(handle.id);
+      if (!container) return null;
+
+      if (!realThinking) {
+        container.remove();
+        return null;
+      }
+
+      const details = container.querySelector('.thinking-box');
+      const summary = container.querySelector('summary');
+      const content = container.querySelector('.thinking-content');
+
+      if (details) details.classList.remove('live');
+      if (details) details.open = false;
+
+      if (summary) {
+        summary.innerHTML = `<i class="fa-regular fa-lightbulb" style="color:var(--text-muted); font-size:11px;"></i>
+          <span class="think-label">Thought process</span>`;
+      }
+
+      if (content) {
+        content.innerHTML = '';
+        content.textContent = realThinking;
+      }
+
+      return container;
+    }
+
+    // 🚀 Streamlined Execution Pipeline
     function executePipeline(text, isRegenerate = false) {
       const input = document.getElementById('user-input');
       const btn = document.getElementById('send-btn');
@@ -607,75 +720,52 @@
         autoResize(input);
       }
 
-      const traceId = appendToolTraceUI();
-      setToolTraceStep(traceId, 0, 'active', 'กำลังวิเคราะห์บริบทคำถาม (ดึงข้อมูลโปรไฟล์ผู้ใช้และประวัติการคุยย้อนหลังจาก Firestore)');
+      // สร้างกล่อง Thinking แบบ Live สไตล์ Claude ทันที
+      const thinkHandle = appendLiveThinkingBox();
+
+      // ข้ามการเรียก planToolUse หากเป็นข้อความทักทาย
+      if (!needsToolCheck(text)) {
+        requestAIReply(text, selectedModel, session, thinkHandle, input, btn, null);
+        return;
+      }
 
       google.script.run
         .withSuccessHandler((plan) => {
           if (!plan || plan.tool === 'none') {
-            setToolTraceStep(traceId, 0, 'done', 'วิเคราะห์แล้ว: คำถามทั่วไป (คุยสนทนาทั่วไป / ไม่ต้องใช้ข้อมูลจากระบบภายนอก)');
-            removeMsg(traceId);
-            const loadingId = appendLoadingMsg();
-            requestAIReply(text, selectedModel, session, loadingId, input, btn, null);
+            requestAIReply(text, selectedModel, session, thinkHandle, input, btn, null);
             return;
           }
 
           const label = TOOL_META[plan.tool] || { name: plan.tool, icon: '🔧' };
-          const TOOL_SOURCES = {
-            weather: 'Open-Meteo & Geocoding API',
-            crypto: 'CoinGecko Simple Price API',
-            currency: 'Frankfurter Exchange Rate API',
-            stock: 'Yahoo Finance API',
-            news: 'Google News RSS Feed Search',
-            browse: 'ระบบสกัดและทำความสะอาดเนื้อหาเว็บ (Web Scraping Engine)',
-            wiki: 'Wikipedia API',
-            hackernews: 'HackerNews Official API',
-            country: 'REST Countries Geographic API',
-            ip_lookup: 'IP-API geographic engine'
-          };
-          const sourceDb = TOOL_SOURCES[plan.tool] || 'ระบบภายนอก';
-
-          setToolTraceStep(traceId, 0, 'done', 'วิเคราะห์เจตนาเรียบร้อย: ตรวจพบความต้องการข้อมูลเชิงลึกเกี่ยวกับ ' + label.name);
-          setToolTraceStep(traceId, 1, 'active', 'กำลังเชื่อมต่อและดึงข้อมูลดิบล่าสุดผ่าน ' + sourceDb);
+          setLiveThinkingStatus(thinkHandle, 'Fetching ' + label.name);
 
           google.script.run
             .withSuccessHandler((toolResult) => {
               if (!toolResult.success) {
-                setToolTraceStep(traceId, 1, 'error', 'เกิดข้อผิดพลาดในการดึงข้อมูลจาก ' + sourceDb + ': ' + toolResult.summary);
-                setTimeout(() => removeMsg(traceId), 2000);
-                const loadingId = appendLoadingMsg();
-                requestAIReply(text, selectedModel, session, loadingId, input, btn, null);
+                requestAIReply(text, selectedModel, session, thinkHandle, input, btn, null);
                 return;
               }
               
-              setToolTraceStep(traceId, 1, 'done', 'ดึงข้อมูลสำเร็จ (ผ่านแหล่งอ้างอิง: ' + toolResult.source + ')');
-              setToolTraceStep(traceId, 2, 'active', 'กำลังส่งต่อชุดข้อมูลจริงไปยังโมเดลเพื่อเรียบเรียงและสรุปคำตอบให้สั้นกระชับ');
+              setLiveThinkingStatus(thinkHandle, 'Composing answer');
 
               google.script.run
                 .withSuccessHandler((res) => {
-                  removeMsg(traceId);
-                  finishAIReply(res, text, session, input, btn, toolResult.source);
+                  finishAIReply(res, text, session, input, btn, toolResult.source, thinkHandle);
                 })
                 .withFailureHandler((err) => {
-                  removeMsg(traceId);
+                  finalizeThinkingBox(thinkHandle, null);
                   input.disabled = false; btn.disabled = false;
                   appendAIMsgUI('', 'เกิดข้อผิดพลาดในการเชื่อมต่อระบบค่ะ: ' + err, Date.now(), false, null);
                 })
                 .sendMessageToAIWithTool(currentSessionId, text, selectedModel, toolResult, {});
             })
             .withFailureHandler((err) => {
-              setToolTraceStep(traceId, 1, 'error', 'สัญญาณดึงข้อมูลจาก ' + sourceDb + ' ขัดข้อง: ' + err);
-              setTimeout(() => removeMsg(traceId), 2000);
-              const loadingId = appendLoadingMsg();
-              requestAIReply(text, selectedModel, session, loadingId, input, btn, null);
+              requestAIReply(text, selectedModel, session, thinkHandle, input, btn, null);
             })
             .fetchToolData(plan.tool, plan.params);
         })
         .withFailureHandler((err) => {
-          setToolTraceStep(traceId, 0, 'error', 'การวิเคราะห์เจตนาล้มเหลว: ' + err);
-          setTimeout(() => removeMsg(traceId), 2000);
-          const loadingId = appendLoadingMsg();
-          requestAIReply(text, selectedModel, session, loadingId, input, btn, null);
+          requestAIReply(text, selectedModel, session, thinkHandle, input, btn, null);
         })
         .planToolUse(text, selectedModel);
     }
@@ -687,33 +777,26 @@
       if (!text) return;
 
       const session = getCurrentSession();
-      
       if (session && (session.title === 'แชทใหม่' || !session.title)) {
         const newTitle = text.length > 20 ? text.substring(0, 20) + '...' : text;
         session.title = newTitle;
         renderHistoryList();
         
         google.script.run
-          .withSuccessHandler(() => {
-            console.log("บันทึกข้อมูลหัวข้อแชทถาวรเรียบร้อย");
-          })
-          .withFailureHandler((err) => {
-            console.error("บันทึกหัวข้อแชทขัดข้อง:", err);
-          })
+          .withSuccessHandler(() => console.log("บันทึกหัวข้อแชทเรียบร้อย"))
           .updateSessionTitle(session.id, newTitle);
       }
 
       executePipeline(text, false);
     }
 
-    function requestAIReply(text, selectedModel, session, loadingId, input, btn, sourceLabel) {
+    function requestAIReply(text, selectedModel, session, thinkHandle, input, btn, sourceLabel) {
       google.script.run
         .withSuccessHandler((res) => {
-          removeMsg(loadingId);
-          finishAIReply(res, text, session, input, btn, sourceLabel);
+          finishAIReply(res, text, session, input, btn, sourceLabel, thinkHandle);
         })
         .withFailureHandler((err) => {
-          removeMsg(loadingId);
+          finalizeThinkingBox(thinkHandle, null);
           input.disabled = false;
           btn.disabled = false;
           appendAIMsgUI('', 'เกิดข้อผิดพลาดในการเชื่อมต่อระบบค่ะ: ' + err, Date.now(), false, null);
@@ -721,7 +804,7 @@
         .sendMessageToAI(currentSessionId, text, selectedModel, {});
     }
 
-    function finishAIReply(res, text, session, input, btn, sourceLabel) {
+    function finishAIReply(res, text, session, input, btn, sourceLabel, thinkHandle) {
       input.disabled = false;
       btn.disabled = false;
       input.focus();
@@ -739,38 +822,32 @@
           });
         }
 
-        // เรียกเอฟเฟกต์พิมพ์ทีละตัวอักษรสำหรับข้อความใหม่
-        appendAIMsgWithStreamingUI(res.thinking, res.reply, Date.now(), sourceLabel);
+        // แปลงกล่อง live thinking ให้กลายเป็น "Thought process" (หรือลบออกหากไม่มี thinking)
+        finalizeThinkingBox(thinkHandle, res.thinking);
+
+        // ค่อยๆ พิมพ์คำตอบของ AI ออกมาทีละตัวอักษร
+        appendAIMsgWithStreamingUI(res.reply, Date.now(), sourceLabel);
       } else {
+        finalizeThinkingBox(thinkHandle, null);
         appendAIMsgUI('', res.reply, Date.now(), false, null);
       }
     }
 
-    // ฟังก์ชันสร้างกล่องข้อความ AI แล้วค่อยๆ พิมพ์ออกมาทีละตัว (Typewriter Streaming)
-    function appendAIMsgWithStreamingUI(thinking, fullText, ts, sourceLabel) {
+    function appendAIMsgWithStreamingUI(fullText, ts, sourceLabel) {
       const body = document.getElementById('chat-body');
       const div = document.createElement('div');
       div.className = 'msg-row ai';
 
-      let thinkingHtml = '';
-      if (thinking) {
-        thinkingHtml = `
-          <details class="thinking-box">
-            <summary>🧠 Thinking Process (กระบวนการคิด)</summary>
-            <div class="thinking-content">${escapeHtml(thinking)}</div>
-          </details>`;
-      }
-
       const msgId = 'ai-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
       
-      div.innerHTML = `${thinkingHtml}<div class="bubble-ai" id="${msgId}" data-raw="${encodeURIComponent(fullText)}"></div>
+      div.innerHTML = `<div class="bubble-ai" id="${msgId}" data-raw="${encodeURIComponent(fullText)}"></div>
         <div class="msg-meta" id="meta-${msgId}"><span>${formatTime(ts)}</span></div>`;
       
       body.appendChild(div);
       body.scrollTop = body.scrollHeight;
 
       let index = 0;
-      const speed = 12; // ความเร็วการพิมพ์ (12ms ต่อตัวอักษร)
+      const speed = 12;
       const bubbleEl = document.getElementById(msgId);
       const cursorHtml = '<span class="typing-cursor"></span>';
 
@@ -778,12 +855,10 @@
         index++;
         const currentText = fullText.substring(0, index);
         bubbleEl.innerHTML = renderMarkdownSafe(currentText) + cursorHtml;
-        
         body.scrollTop = body.scrollHeight;
 
         if (index >= fullText.length) {
           clearInterval(timer);
-          
           bubbleEl.innerHTML = renderMarkdownSafe(fullText);
           
           if (window.hljs) {
@@ -804,63 +879,6 @@
       }, speed);
     }
 
-    function appendToolTraceUI() {
-      const id = 'trace-' + Date.now();
-      const body = document.getElementById('chat-body');
-      const div = document.createElement('div');
-      div.className = 'msg-row ai';
-      div.id = id;
-      div.innerHTML = `
-        <div class="bubble-ai" style="color: var(--text-main); display: flex; flex-direction: column; gap: 10px; padding: 14px 18px; width: 100%; border-radius: 12px;">
-          <div style="font-weight: bold; font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); padding-bottom: 6px;">
-            <i class="fa-solid fa-spinner fa-spin"></i> แผนภาพกระบวนการคิดและสืบค้นข้อมูลจริง (Thinking Process & Data Trace)
-          </div>
-          <div class="step-text" style="font-size: 12.5px; color: var(--text-main); line-height: 1.6; display: flex; flex-direction: column; gap: 6px;">
-          </div>
-        </div>
-      `;
-      body.appendChild(div);
-      body.scrollTop = body.scrollHeight;
-      return id;
-    }
-
-    function setToolTraceStep(traceId, stepIndex, state, text) {
-      const container = document.getElementById(traceId);
-      if (!container) return;
-      const stepsContainer = container.querySelector('.step-text');
-      if (!stepsContainer) return;
-
-      let stepEl = document.getElementById(traceId + '-step-' + stepIndex);
-      if (!stepEl) {
-        stepEl = document.createElement('div');
-        stepEl.id = traceId + '-step-' + stepIndex;
-        stepEl.style.display = 'flex';
-        stepEl.style.alignItems = 'flex-start';
-        stepEl.style.gap = '8px';
-        stepsContainer.appendChild(stepEl);
-      }
-
-      let iconHtml = '';
-      if (state === 'active') {
-        iconHtml = '<i class="fa-solid fa-spinner fa-spin" style="color: var(--text-muted); font-size: 11px; margin-top: 4px;"></i>';
-        stepEl.style.color = 'var(--text-main)';
-        stepEl.style.fontWeight = '500';
-      } else if (state === 'done') {
-        iconHtml = '<i class="fa-solid fa-circle-check" style="color: #16a34a; font-size: 11px; margin-top: 4px;"></i>';
-        stepEl.style.color = 'var(--text-muted)';
-        stepEl.style.fontWeight = '400';
-      } else if (state === 'error') {
-        iconHtml = '<i class="fa-solid fa-circle-exclamation" style="color: var(--danger); font-size: 11px; margin-top: 4px;"></i>';
-        stepEl.style.color = 'var(--danger)';
-        stepEl.style.fontWeight = '400';
-      }
-
-      stepEl.innerHTML = `${iconHtml} <span style="flex: 1;">${escapeHtml(text)}</span>`;
-
-      const body = document.getElementById('chat-body');
-      body.scrollTop = body.scrollHeight;
-    }
-
     function handleInputKeydown(e) {
       const isMobile = window.innerWidth <= 800;
       if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
@@ -877,7 +895,7 @@
       let lastUserMsg = null;
       if (session && session.messages) {
         for (let i = session.messages.length - 1; i >= 0; i--) {
-          if (session.messages[i].role === 'assistant') { continue; }
+          if (session.messages[i].role === 'assistant') continue;
           if (session.messages[i].role === 'user') { lastUserMsg = session.messages[i].content; break; }
         }
       }
@@ -888,9 +906,7 @@
           renderCurrentChat();
           executePipeline(lastUserMsg, true);
         })
-        .withFailureHandler((err) => {
-          alert("เกิดปัญหาลบคำตอบเดิมออกจากฐานข้อมูล: " + err);
-        })
+        .withFailureHandler((err) => alert("เกิดปัญหาลบคำตอบเดิมออกจากฐานข้อมูล: " + err))
         .deleteLastAssistantMessage(currentSessionId);
     }
 
@@ -913,7 +929,10 @@
       if (thinking) {
         thinkingHtml = `
           <details class="thinking-box">
-            <summary>🧠 Thinking Process (กระบวนการคิด)</summary>
+            <summary>
+              <i class="fa-regular fa-lightbulb" style="color:var(--text-muted); font-size:11px;"></i>
+              <span class="think-label">Thought process</span>
+            </summary>
             <div class="thinking-content">${escapeHtml(thinking)}</div>
           </details>`;
       }
@@ -966,23 +985,6 @@
           setTimeout(() => btn.innerHTML = original, 1200);
         }
       });
-    }
-
-    function appendLoadingMsg() {
-      const id = 'loading-' + Date.now();
-      const body = document.getElementById('chat-body');
-      const div = document.createElement('div');
-      div.className = 'msg-row ai';
-      div.id = id;
-      div.innerHTML = `
-        <div class="bubble-ai" style="color: var(--text-main); display: inline-flex; align-items: center; gap: 8px;">
-          <i class="fa-solid fa-spinner fa-spin" style="color: var(--text-muted);"></i>
-          <span class="step-text">🧠 กำลังประมวลคำตอบขั้นสุดท้ายโดยอ้างอิงประวัติส่วนบุคคลจาก Firestore</span>
-        </div>
-      `;
-      body.appendChild(div);
-      body.scrollTop = body.scrollHeight;
-      return id;
     }
 
     function formatTime(ts) {
