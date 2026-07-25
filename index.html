@@ -116,7 +116,7 @@
     }
     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
-    /* 🧠 Claude-style Live Thinking Box Styles */
+    /* Claude-style Minimal Thinking Box Styles */
     .thinking-box { 
       background-color: var(--bubble-ai-bg); 
       border: 1px solid var(--border); 
@@ -166,7 +166,7 @@
       to { transform: rotate(360deg); }
     }
 
-    /* จุดกระพริบสามจุดในเนื้อกล่อง */
+    /* จุดกระพริบสามจุด */
     .think-dots {
       display: inline-flex;
       align-items: center;
@@ -314,12 +314,13 @@
 
         <div class="model-controls">
           <select id="persona-select" class="persona-selector" onchange="changePersona(this.value)">
-            <option value="default">🤖 Ceres AI (ทั่วไป)</option>
-            <option value="coder">💻 ผู้เชี่ยวชาญการเขียนโค้ด</option>
-            <option value="tutor">🇬🇧 ครูสอนภาษาอังกฤษ</option>
-            <option value="counselor">🧘 นักจิตวิทยาคอยรับฟัง</option>
-            <option value="marketing">📈 นักการตลาดสร้างสรรค์</option>
-            <option value="writer">✍️ นักเขียนคอนเทนต์</option>
+            <option value="default">Ceres AI (ทั่วไป)</option>
+            <option value="thinker">นักคิดวิเคราะห์เชิงลึก (Deep Think)</option>
+            <option value="coder">ผู้เชี่ยวชาญการเขียนโค้ด</option>
+            <option value="tutor">ครูสอนภาษาอังกฤษ</option>
+            <option value="counselor">นักจิตวิทยาคอยรับฟัง</option>
+            <option value="marketing">นักการตลาดสร้างสรรค์</option>
+            <option value="writer">นักเขียนคอนเทนต์</option>
           </select>
 
           <button class="btn-icon" title="รีเฟรชโมเดล" onclick="loadModels()"><i class="fa-solid fa-rotate"></i></button>
@@ -391,16 +392,16 @@
     let activeModel = "";
 
     const TOOL_META = {
-      weather: { name: 'สภาพอากาศ', icon: '🌤️' },
-      crypto: { name: 'ราคาคริปโต', icon: '🪙' },
-      currency: { name: 'อัตราแลกเปลี่ยน', icon: '💱' },
-      stock: { name: 'ราคาหุ้น', icon: '📈' },
-      news: { name: 'ข่าวล่าสุด', icon: '📰' },
-      browse: { name: 'เปิดเว็บไซต์', icon: '🌐' },
-      wiki: { name: 'ค้นหา Wikipedia', icon: '📖' },
-      hackernews: { name: 'ข่าวไอที HackerNews', icon: '💻' },
-      country: { name: 'ข้อมูลประเทศ', icon: '🗺️' },
-      ip_lookup: { name: 'สืบค้นพิกัด IP', icon: '📍' }
+      weather: { name: 'สภาพอากาศ' },
+      crypto: { name: 'ราคาคริปโต' },
+      currency: { name: 'อัตราแลกเปลี่ยน' },
+      stock: { name: 'ราคาหุ้น' },
+      news: { name: 'ข่าวล่าสุด' },
+      browse: { name: 'เปิดเว็บไซต์' },
+      wiki: { name: 'ค้นหา Wikipedia' },
+      hackernews: { name: 'ข่าวไอที HackerNews' },
+      country: { name: 'ข้อมูลประเทศ' },
+      ip_lookup: { name: 'สืบค้นพิกัด IP' }
     };
 
     window.onload = function() {
@@ -636,7 +637,7 @@
       return true;
     }
 
-    // 🧠 Live Thinking Box Management Functions (Claude Style)
+    // Live Thinking Box Management Functions (Claude Minimal Style)
     function appendLiveThinkingBox() {
       const id = 'thinking-' + Date.now();
       const body = document.getElementById('chat-body');
@@ -648,7 +649,7 @@
         <details class="thinking-box live" open>
           <summary>
             <span class="think-spinner-ring"></span>
-            <span class="think-label" id="${id}-label">Thinking</span>
+            <span class="think-label" id="${id}-label">Thinking...</span>
           </summary>
           <div class="thinking-content" id="${id}-status">
             <span class="think-dots"><span></span><span></span><span></span></span>
@@ -697,6 +698,24 @@
       return container;
     }
 
+    // 🚀 Minimal Loading Message (Claude Style)
+    function appendLoadingMsg() {
+      const id = 'loading-' + Date.now();
+      const body = document.getElementById('chat-body');
+      const div = document.createElement('div');
+      div.className = 'msg-row ai';
+      div.id = id;
+      div.innerHTML = `
+        <div class="bubble-ai" style="color: var(--text-main); display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px;">
+          <i class="fa-solid fa-spinner fa-spin" style="color: var(--text-muted); font-size: 12px;"></i>
+          <span class="step-text" style="font-size: 13px; color: var(--text-muted);">Thinking...</span>
+        </div>
+      `;
+      body.appendChild(div);
+      body.scrollTop = body.scrollHeight;
+      return id;
+    }
+
     // 🚀 Streamlined Execution Pipeline
     function executePipeline(text, isRegenerate = false) {
       const input = document.getElementById('user-input');
@@ -720,10 +739,8 @@
         autoResize(input);
       }
 
-      // สร้างกล่อง Thinking แบบ Live สไตล์ Claude ทันที
       const thinkHandle = appendLiveThinkingBox();
 
-      // ข้ามการเรียก planToolUse หากเป็นข้อความทักทาย
       if (!needsToolCheck(text)) {
         requestAIReply(text, selectedModel, session, thinkHandle, input, btn, null);
         return;
@@ -736,8 +753,8 @@
             return;
           }
 
-          const label = TOOL_META[plan.tool] || { name: plan.tool, icon: '🔧' };
-          setLiveThinkingStatus(thinkHandle, 'Fetching ' + label.name);
+          const label = TOOL_META[plan.tool] || { name: plan.tool };
+          setLiveThinkingStatus(thinkHandle, 'Fetching ' + label.name + '...');
 
           google.script.run
             .withSuccessHandler((toolResult) => {
@@ -746,7 +763,7 @@
                 return;
               }
               
-              setLiveThinkingStatus(thinkHandle, 'Composing answer');
+              setLiveThinkingStatus(thinkHandle, 'Composing answer...');
 
               google.script.run
                 .withSuccessHandler((res) => {
@@ -822,10 +839,7 @@
           });
         }
 
-        // แปลงกล่อง live thinking ให้กลายเป็น "Thought process" (หรือลบออกหากไม่มี thinking)
         finalizeThinkingBox(thinkHandle, res.thinking);
-
-        // ค่อยๆ พิมพ์คำตอบของ AI ออกมาทีละตัวอักษร
         appendAIMsgWithStreamingUI(res.reply, Date.now(), sourceLabel);
       } else {
         finalizeThinkingBox(thinkHandle, null);
