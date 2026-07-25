@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Ceres AI Chat</title>
-  <link href="[https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css](https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css)" rel="stylesheet">
-  <link href="[https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css](https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css)" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" rel="stylesheet">
   <style>
     :root {
       --bg-main: #ffffff;
@@ -55,11 +55,9 @@
     .history-item:hover .btn-delete-chat { opacity: 1; }
     .btn-delete-chat:hover { color: var(--danger); }
 
-    .sidebar-footer { padding: 10px 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+    .sidebar-footer { padding: 10px 12px; border-top: 1px solid var(--border); }
     .btn-clear-all { width: 100%; background: none; border: 1px solid var(--border); color: var(--text-muted); padding: 9px; border-radius: 8px; cursor: pointer; font-size: 12px; }
     .btn-clear-all:hover { color: var(--danger); border-color: var(--danger); }
-    .btn-stats { width: 100%; background: var(--bg-main); border: 1px solid var(--border); color: var(--accent); padding: 9px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; }
-    .btn-stats:hover { background: var(--accent-soft); }
 
     .chat-main { flex: 1; display: flex; flex-direction: column; background-color: var(--bg-main); min-width: 0; }
     .main-header { height: 55px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background-color: #ffffff; flex-shrink: 0; gap: 8px; }
@@ -86,7 +84,7 @@
     }
     .persona-selector:focus { border-color: var(--accent); }
 
-    .status-badge { font-size: 11px; padding: 4px 9px; border-radius: 12px; display: flex; align-items: center; gap: 6px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+    .status-badge { font-size: 11px; padding: 4px 9px; border-radius: 12px; display: flex; align-items: center; gap: 6px; font-weight: 500; white-space: nowrap; }
     .status-badge.loading { background: #fef9c3; color: #92650a; border: 1px solid #eab308; }
     .status-badge.ready { background: #dcfce7; color: #15803d; border: 1px solid #16a34a; }
     .status-badge.error { background: #fee2e2; color: #b91c1c; border: 1px solid #dc2626; }
@@ -110,6 +108,7 @@
     .bubble-ai th, .bubble-ai td { border: 1px solid var(--border); padding: 6px 10px; font-size: 13px; }
     .bubble-ai blockquote { border-left: 3px solid var(--border); padding-left: 10px; color: var(--text-muted); margin: 8px 0; }
 
+    /* Typing Cursor */
     .typing-cursor {
       display: inline-block;
       width: 6px;
@@ -121,6 +120,7 @@
     }
     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
+    /* 🧠 Compact Claude-style Live Thinking Box */
     .thinking-box { 
       background-color: var(--bubble-ai-bg); 
       border: 1px solid var(--border); 
@@ -131,7 +131,9 @@
       width: fit-content;
       max-width: 100%;
     }
-    .thinking-box.live { border-color: var(--accent); }
+    .thinking-box.live {
+      border-color: var(--accent);
+    }
     .thinking-box summary { 
       padding: 5px 10px; 
       font-size: 11.5px; 
@@ -158,6 +160,7 @@
       align-items: center;
     }
 
+    /* วงกลมหมุนแบบ Claude */
     .think-spinner-ring {
       width: 11px;
       height: 11px;
@@ -168,11 +171,22 @@
       animation: spin-ring 0.7s linear infinite;
       flex-shrink: 0;
     }
-    @keyframes spin-ring { to { transform: rotate(360deg); } }
+    @keyframes spin-ring {
+      to { transform: rotate(360deg); }
+    }
 
-    .think-dots { display: inline-flex; align-items: center; gap: 3px; padding: 1px 0; }
+    /* จุดกระพริบสามจุด */
+    .think-dots {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 0;
+    }
     .think-dots span {
-      width: 5px; height: 5px; border-radius: 50%; background-color: var(--text-muted);
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background-color: var(--text-muted);
       animation: dot-pulse 1.2s ease-in-out infinite;
     }
     .think-dots span:nth-child(2) { animation-delay: 0.2s; }
@@ -188,51 +202,84 @@
     .msg-action:hover { color: var(--accent); }
 
     .chat-pill-badge {
-      display: inline-flex; align-items: center; gap: 10px; background-color: #eff6ff; 
-      border: 1px solid #bfdbfe; padding: 8px 18px; border-radius: 9999px; color: #1e40af; 
-      font-weight: 600; font-size: 14.5px; box-shadow: 0 2px 8px rgba(37, 99, 235, 0.04);
-      user-select: none; cursor: default;           
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background-color: #eff6ff; 
+      border: 1px solid #bfdbfe; 
+      padding: 8px 18px;         
+      border-radius: 9999px;     
+      color: #1e40af;            
+      font-weight: 600;
+      font-size: 14.5px;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.04);
+      user-select: none;
+      cursor: default;           
     }
     .chat-pill-badge i { font-size: 17px; color: #2563eb; }
 
     .btn-send {
-      background-color: var(--send-btn); color: white; border: none; padding: 0 16px;           
-      height: 38px; border-radius: 9999px; cursor: pointer; display: inline-flex;
-      align-items: center; justify-content: center; gap: 6px; font-weight: 600;
-      font-size: 13.5px; flex-shrink: 0; transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      background-color: var(--send-btn);
+      color: white;
+      border: none;
+      padding: 0 16px;           
+      height: 38px;
+      border-radius: 9999px;     
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;                  
+      font-weight: 600;
+      font-size: 13.5px;
+      flex-shrink: 0;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
       box-shadow: 0 2px 6px rgba(37, 99, 235, 0.15);
     }
     .btn-send:hover { background-color: var(--send-btn-hover); box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25); }
     .btn-send:disabled { background-color: #d1d5db; box-shadow: none; cursor: not-allowed; }
 
-    .footer-hint { font-size: 10.5px; color: #9ca3af; margin-top: 8px; text-align: center; display: block; font-weight: 400; opacity: 0.85; user-select: none; }
+    .footer-hint {
+      font-size: 10.5px;
+      color: #9ca3af;            
+      margin-top: 8px;
+      text-align: center;        
+      display: block;            
+      font-weight: 400;
+      opacity: 0.85;
+      user-select: none;
+    }
+
     .source-badge { display: inline-flex; align-items: center; gap: 5px; background: var(--accent-soft); color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 10px; padding: 3px 9px; font-size: 10.5px; font-weight: 600; }
 
     .chat-footer { padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); background-color: #ffffff; border-top: 1px solid var(--border); flex-shrink: 0; }
     
     .input-container { 
-      background-color: var(--bg-input); border: 1px solid var(--border); border-radius: 12px; 
-      padding: 8px 8px 8px 14px; display: flex; align-items: flex-end; gap: 10px; 
-      margin-left: 48px; margin-right: 48px; 
+      background-color: var(--bg-input); 
+      border: 1px solid var(--border); 
+      border-radius: 12px; 
+      padding: 8px 8px 8px 14px; 
+      display: flex; 
+      align-items: flex-end; 
+      gap: 10px; 
+      margin-left: 48px;  
+      margin-right: 48px; 
     }
     .input-container:focus-within { border-color: var(--accent); }
     .input-container textarea { flex: 1; background: transparent; border: none; color: var(--text-main); font-size: 15px; outline: none; resize: none; max-height: 140px; line-height: 1.5; padding: 7px 0; font-family: inherit; }
     .input-container textarea::placeholder { color: var(--text-muted); }
 
-    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; display: none; align-items: center; justify-content: center; }
-    .modal-backdrop.open { display: flex; }
-    .modal-card { background: #fff; width: 90%; max-width: 400px; border-radius: 12px; padding: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-weight: bold; font-size: 15px; color: var(--accent); }
-    .quota-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
-    .quota-item:last-child { border-bottom: none; }
-
+    /* 📱 Mobile Display Fixes */
     @media (max-width: 800px) {
-      .sidebar-left { position: fixed; top: 0; left: 0; bottom: 0; width: 82%; max-width: 300px; transform: translateX(-100%); box-shadow: 2px 0 16px rgba(0,0,0,0.15); }
+      .sidebar-left {
+        position: fixed; top: 0; left: 0; bottom: 0; width: 82%; max-width: 300px;
+        transform: translateX(-100%); box-shadow: 2px 0 16px rgba(0,0,0,0.15);
+      }
       .sidebar-left.open { transform: translateX(0); }
       .btn-hamburger { display: flex; }
-      .header-title { display: none; }
+      .header-title { display: none; } /* ⚡ ซ่อนป้ายชื่อบนมือถือ เพื่อไม่ให้บัง Dropdown */
       .chat-pill-badge { display: none; }
-      .persona-selector { max-width: 140px; font-size: 11.5px; }
+      .persona-selector { max-width: 140px; font-size: 11.5px; } /* ⚡ ย่อขอบเขตกล่องเลือกบทบาท */
       .msg-row { max-width: 90%; }
       .chat-body { padding: 14px; }
       .chat-footer { padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); }
@@ -261,7 +308,6 @@
       <div class="chat-history" id="chat-history-list"></div>
 
       <div class="sidebar-footer">
-        <button class="btn-stats" onclick="showQuotaModal()"><i class="fa-solid fa-chart-pie"></i> โควตาการค้นหาเว็บ</button>
         <button class="btn-clear-all" onclick="clearAllChats()"><i class="fa-solid fa-trash-can"></i> ล้างแชททั้งหมด</button>
       </div>
     </div>
@@ -290,7 +336,7 @@
           </select>
 
           <button class="btn-icon" title="รีเฟรชโมเดล" onclick="loadModels()"><i class="fa-solid fa-rotate"></i></button>
-          <div id="status-badge" class="status-badge loading" onclick="showQuotaModal()">
+          <div id="status-badge" class="status-badge loading">
             <i class="fa-solid fa-circle-notch fa-spin"></i> <span class="status-text">กำลังโหลด</span>
           </div>
         </div>
@@ -309,20 +355,13 @@
     </div>
   </div>
 
-  <div class="modal-backdrop" id="quota-modal" onclick="closeQuotaModal(event)">
-    <div class="modal-card">
-      <div class="modal-header">
-        <span>📊 สถิติโควตา Search API (Firebase)</span>
-        <button class="btn-icon" onclick="closeQuotaModalForce()"><i class="fa-solid fa-xmark"></i></button>
-      </div>
-      <div id="quota-content">กำลังโหลดข้อมูลสถิติ...</div>
-    </div>
-  </div>
-
-  <script src="[https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js](https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js)"></script>
-  <script src="[https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js](https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js)"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script>
-    const GAS_URL = "[https://script.google.com/macros/s/AKfycbyjWTQnGyYF-qPn1Ax0G2z_CjebRIqr9DMvz8zQbQsKWjMoPPnqtAabXwXgeiuVRGkF/exec](https://script.google.com/macros/s/AKfycbyjWTQnGyYF-qPn1Ax0G2z_CjebRIqr9DMvz8zQbQsKWjMoPPnqtAabXwXgeiuVRGkF/exec)";
+    // =========================================================================
+    // 🌐 GAS API Configuration & Compatibility Polyfill (สำหรับ GitHub Pages)
+    // =========================================================================
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbyjWTQnGyYF-qPn1Ax0G2z_CjebRIqr9DMvz8zQbQsKWjMoPPnqtAabXwXgeiuVRGkF/exec";
 
     if (typeof google === 'undefined' || !google.script || !google.script.run) {
       window.google = window.google || {};
@@ -358,6 +397,7 @@
 
       window.google.script.run = createGasRunner();
     }
+    // =========================================================================
 
     let sessions = [];
     let currentSessionId = null;
@@ -405,40 +445,6 @@
     }
     function closeSidebarIfMobile() {
       if (window.innerWidth <= 800) closeSidebar();
-    }
-
-    function showQuotaModal() {
-      document.getElementById('quota-modal').classList.add('open');
-      const content = document.getElementById('quota-content');
-      content.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> กำลังโหลดข้อมูลจาก Firebase...';
-
-      google.script.run
-        .withSuccessHandler((res) => {
-          if (res.success && res.stats) {
-            let html = '';
-            for (const key in res.stats) {
-              const item = res.stats[key];
-              html += `<div class="quota-item">
-                <span style="font-weight:600; text-transform:capitalize;">${key}</span>
-                <span>${item.used} / ${item.limit >= 99999 ? '∞' : item.limit} ครั้ง</span>
-              </div>`;
-            }
-            content.innerHTML = html || 'ยังไม่มีบันทึกการใช้งาน';
-          } else {
-            content.innerHTML = 'ไม่สามารถดึงข้อมูลโควตาได้ในขณะนี้';
-          }
-        })
-        .withFailureHandler(() => {
-          content.innerHTML = 'เกิดข้อผิดพลาดในการดึงข้อมูลจาก Firestore';
-        })
-        .getSearchUsageStats();
-    }
-
-    function closeQuotaModal(e) {
-      if (e.target.id === 'quota-modal') document.getElementById('quota-modal').classList.remove('open');
-    }
-    function closeQuotaModalForce() {
-      document.getElementById('quota-modal').classList.remove('open');
     }
 
     function loadSessionsFromDb() {
@@ -634,6 +640,7 @@
       el.style.height = Math.min(el.scrollHeight, 140) + 'px';
     }
 
+    // ⚡ OPTIMIZATION: Heuristic กรองข้อความสั้น/ทักทาย
     function needsToolCheck(text) {
       const t = text.trim();
       if (t.length < 8) return false;
@@ -642,6 +649,7 @@
       return true;
     }
 
+    // Live Thinking Box Management Functions (Compact Claude Style)
     function appendLiveThinkingBox() {
       const id = 'thinking-' + Date.now();
       const body = document.getElementById('chat-body');
@@ -703,6 +711,7 @@
       return container;
     }
 
+    // 🚀 Streamlined Execution Pipeline
     function executePipeline(text, isRegenerate = false) {
       const input = document.getElementById('user-input');
       const btn = document.getElementById('send-btn');
@@ -966,6 +975,11 @@
       } catch (e) {
         return escapeHtml(text).replace(/\n/g, '<br>');
       }
+    }
+
+    function removeMsg(id) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
     }
 
     function copyMsg(msgId) {
