@@ -116,46 +116,51 @@
     }
     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
-    /* Claude-style Minimal Thinking Box Styles */
+    /* 🧠 Compact Claude-style Live Thinking Box */
     .thinking-box { 
       background-color: var(--bubble-ai-bg); 
       border: 1px solid var(--border); 
       border-radius: 8px; 
-      margin-bottom: 8px; 
+      margin-bottom: 6px; 
       overflow: hidden; 
-      transition: border-color 0.2s ease;
+      transition: all 0.2s ease;
+      width: fit-content;
+      max-width: 100%;
     }
     .thinking-box.live {
       border-color: var(--accent);
     }
     .thinking-box summary { 
-      padding: 8px 12px; 
-      font-size: 12px; 
+      padding: 5px 10px; 
+      font-size: 11.5px; 
       color: var(--text-muted); 
       cursor: pointer; 
       user-select: none; 
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
     }
     .thinking-box summary:hover { color: var(--text-main); background: #e9eaec; }
     .thinking-box summary .think-label { flex: 1; font-weight: 500; }
 
     .thinking-content { 
-      padding: 10px 14px; 
-      font-size: 12px; 
+      padding: 6px 10px; 
+      font-size: 11.5px; 
       color: var(--text-muted); 
       border-top: 1px solid var(--border); 
       font-family: monospace; 
       white-space: pre-wrap; 
       background-color: #ffffff; 
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
 
     /* วงกลมหมุนแบบ Claude */
     .think-spinner-ring {
-      width: 13px;
-      height: 13px;
-      border: 2px solid rgba(37, 99, 235, 0.2);
+      width: 11px;
+      height: 11px;
+      border: 1.8px solid rgba(37, 99, 235, 0.2);
       border-top-color: var(--accent);
       border-radius: 50%;
       display: inline-block;
@@ -170,12 +175,12 @@
     .think-dots {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 2px 0;
+      gap: 3px;
+      padding: 1px 0;
     }
     .think-dots span {
-      width: 6px;
-      height: 6px;
+      width: 5px;
+      height: 5px;
       border-radius: 50%;
       background-color: var(--text-muted);
       animation: dot-pulse 1.2s ease-in-out infinite;
@@ -637,7 +642,7 @@
       return true;
     }
 
-    // Live Thinking Box Management Functions (Claude Minimal Style)
+    // Live Thinking Box Management Functions (Compact Claude Style)
     function appendLiveThinkingBox() {
       const id = 'thinking-' + Date.now();
       const body = document.getElementById('chat-body');
@@ -693,27 +698,10 @@
       if (content) {
         content.innerHTML = '';
         content.textContent = realThinking;
+        content.style.display = 'block'; // ให้แสดงข้อความปกติกรณีเปิดกดขยาย
       }
 
       return container;
-    }
-
-    // 🚀 Minimal Loading Message (Claude Style)
-    function appendLoadingMsg() {
-      const id = 'loading-' + Date.now();
-      const body = document.getElementById('chat-body');
-      const div = document.createElement('div');
-      div.className = 'msg-row ai';
-      div.id = id;
-      div.innerHTML = `
-        <div class="bubble-ai" style="color: var(--text-main); display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px;">
-          <i class="fa-solid fa-spinner fa-spin" style="color: var(--text-muted); font-size: 12px;"></i>
-          <span class="step-text" style="font-size: 13px; color: var(--text-muted);">Thinking...</span>
-        </div>
-      `;
-      body.appendChild(div);
-      body.scrollTop = body.scrollHeight;
-      return id;
     }
 
     // 🚀 Streamlined Execution Pipeline
@@ -947,7 +935,7 @@
               <i class="fa-regular fa-lightbulb" style="color:var(--text-muted); font-size:11px;"></i>
               <span class="think-label">Thought process</span>
             </summary>
-            <div class="thinking-content">${escapeHtml(thinking)}</div>
+            <div class="thinking-content" style="display:block;">${escapeHtml(thinking)}</div>
           </details>`;
       }
 
