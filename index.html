@@ -282,6 +282,51 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script>
+    // =========================================================================
+    // 🌐 GAS API Configuration & Compatibility Polyfill (สำหรับรันบน GitHub Pages)
+    // =========================================================================
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbyjWTQnGyYF-qPn1Ax0G2z_CjebRIqr9DMvz8zQbQsKWjMoPPnqtAabXwXgeiuVRGkF/exec";
+
+    if (typeof google === 'undefined' || !google.script || !google.script.run) {
+      window.google = window.google || {};
+      window.google.script = window.google.script || {};
+
+      function createGasRunner(successHandler, failureHandler) {
+        return new Proxy({}, {
+          get(target, prop) {
+            if (prop === 'withSuccessHandler') {
+              return (fn) => createGasRunner(fn, failureHandler);
+            }
+            if (prop === 'withFailureHandler') {
+              return (fn) => createGasRunner(successHandler, fn);
+            }
+            return function(...args) {
+              fetch(GAS_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: prop, args: args })
+              })
+              .then(res => res.json())
+              .then(data => {
+                if (data && data.status === 'error') {
+                  if (failureHandler) failureHandler(data.error || "เกิดข้อผิดพลาดจากเซิร์ฟเวอร์");
+                } else {
+                  if (successHandler) successHandler(data.result !== undefined ? data.result : data);
+                }
+              })
+              .catch(err => {
+                console.error("GAS Bridge API Error:", err);
+                if (failureHandler) failureHandler(err);
+              });
+            };
+          }
+        });
+      }
+
+      window.google.script.run = createGasRunner();
+    }
+    // =========================================================================
+
     let sessions = [];
     let currentSessionId = null;
     let activeModel = "";
@@ -436,7 +481,6 @@
         });
     }
 
-    // ฟังก์ชันสั่งสลับเปลี่ยนบทบาทประจำห้องแชทปัจจุบัน
     function changePersona(personaId) {
       if (!currentSessionId) return;
 
@@ -468,7 +512,6 @@
       
       const session = getCurrentSession();
       if (session) {
-        // ซิงค์การแสดงผลของตัวเลือกบทบาทแชทใน Dropdown ให้ตรงตามห้องที่กำลังดูอยู่
         document.getElementById('persona-select').value = session.persona || "default";
       }
 
@@ -550,7 +593,6 @@
       }
 
       const traceId = appendToolTraceUI();
-      // ขั้นที่ 0: เริ่มต้นวิเคราะห์คำถามและดึงโปรไฟล์จากฐานข้อมูล Firestore
       setToolTraceStep(traceId, 0, 'active', 'กำลังวิเคราะห์บริบทคำถาม (ดึงข้อมูลโปรไฟล์ผู้ใช้และประวัติการคุยย้อนหลังจาก Firestore)');
 
       google.script.run
@@ -631,13 +673,11 @@
 
       const session = getCurrentSession();
       
-      // การซิงค์และเปลี่ยนชื่อหัวข้อห้องแชทลงสู่ Firestore ตลอดไปจากประโยคคำถามแรกสุด
       if (session && (session.title === 'แชทใหม่' || !session.title)) {
         const newTitle = text.length > 20 ? text.substring(0, 20) + '...' : text;
         session.title = newTitle;
         renderHistoryList();
         
-        // ยิงคำสั่งอัปเดตค่าหัวข้อขึ้นสู่ Firebase Firestore เซิร์ฟเวอร์จริงหลังบ้าน
         google.script.run
           .withSuccessHandler(() => {
             console.log("บันทึกข้อมูลหัวข้อแชทถาวรเรียบร้อย");
@@ -683,7 +723,6 @@
       }
     }
 
-    // ฟังก์ชันสร้างกล่องข้อความติดตามงานแบบสรุปรายการขั้นตอน (Thinking Trace Block)
     function appendToolTraceUI() {
       const id = 'trace-' + Date.now();
       const body = document.getElementById('chat-body');
@@ -704,7 +743,6 @@
       return id;
     }
 
-    // ฟังก์ชันวาดและอัปเดตขั้นตอนแต่ละขั้นแบบตรวจสอบรายข้อสะสมต่อลงมา (Plain Text)
     function setToolTraceStep(traceId, stepIndex, state, text) {
       const container = document.getElementById(traceId);
       if (!container) return;
