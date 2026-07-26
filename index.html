@@ -1,1266 +1,1836 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Ceres AI</title>
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css" rel="stylesheet">
-  
-  <!-- Firebase SDK (CDN Version สำหรับ Google Apps Script) -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+// ====================================================================
+// Ceres AI Chat — Backend (Google Apps Script + Firestore)
+//   • Deep Thinking Mode: วิเคราะห์โจทย์ → ร่างคำตอบ → ตรวจทาน (3 ขั้นจริง)
+//   • Interpreter Mode: แปลไทย ↔ จีนไต้หวัน auto-detect ทิศทาง
+//   • Multi-Source Verified Knowledge (Tier 1 ฟรี + Tier 2 พรีเมียมจำกัดโควตา)
+//   • นับโควตาจริงลง Firestore แบบ atomic + อ่านเรท-limit header จริง
+//   • Tuned for local Gemma 3-4B
+// ====================================================================
 
-  <style>
-    :root {
-      --bg:#faf9f5; --bg-side:#f5f4ee; --surface:#ffffff;
-      --border:#e5e2d9; --border-soft:#efece4;
-      --chip:#f0eee6; --chip-hover:#e8e5da;
-      --text:#1f1e1d; --text-soft:#3d3b37; --text-muted:#83817a;
-      --accent:#c96442; --accent-hover:#b25636; --accent-soft:#f6ede8;
-      --danger:#b4433a; --verify:#4a7c59; --premium:#7c6da8;
+const DEFAULT_NGROK_URL = "https://flounder-upscale-cane.ngrok-free.dev";
+const PROP_KEY_NGROK_URL = "NGROK_URL";
+const FIRESTORE_DATABASE_ID = "ceres-db";
+
+const ALLOWED_ACTIONS = new Set([
+  'getUserSessions', 'createUserSession', 'deleteUserSession',
+  'getChatMessages', 'saveChatMessage', 'deleteLastAssistantMessage',
+  'updateSessionMode', 'updateSessionTitle', 'updateSessionInterpreterMode',  // เพิ่ม
+  'getAvailableModels', 'sendMessageToAI', 'sendMessageToAIWithTool',
+  'sendMessageInterpreter',  // เพิ่ม
+  'deepThinkAnalyze', 'deepThinkDraft', 'deepThinkRefine',
+  'planToolUse', 'fetchToolData', 'getSettings', 'getApiQuotaStatus'
+]);
+
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const action = data.action;
+    const args = data.args || [];
+    if (!ALLOWED_ACTIONS.has(action) || typeof this[action] !== 'function') {
+      throw new Error("ไม่ได้รับอนุญาตให้เรียกใช้: " + action);
     }
-    * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
-    html, body { height:100%; }
-    body {
-      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans Thai',Tahoma,sans-serif;
-      background:var(--bg); color:var(--text); height:100vh; height:100dvh;
-      display:flex; overflow:hidden; font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased;
-    }
-    .app { display:flex; width:100%; height:100%; position:relative; }
+    const result = this[action].apply(this, args);
+    return ContentService.createTextOutput(JSON.stringify({ status: 'success', result: result }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', error: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
 
-    /* ═══ AUTH CONTAINER (หน้าเข้าสู่ระบบ/สมัครสมาชิก) ═══ */
-    .auth-overlay {
-      position: fixed; inset: 0; background: var(--bg); z-index: 999;
-      display: flex; align-items: center; justify-content: center; padding: 20px;
-      overflow-y: auto;
-    }
-    .auth-card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 24px; padding: 36px 30px; width: 100%; max-width: 430px;
-      box-shadow: 0 10px 30px rgba(31, 30, 29, 0.05); text-align: center;
-    }
-    .auth-logo { margin-bottom: 8px; display: inline-block; }
-    .auth-title { font-size: 24px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
-    .auth-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 24px; }
-    .auth-error {
-      background: #fbeeed; color: #b4433a; border: 1px solid #f0d5d2;
-      padding: 12px 14px; border-radius: 12px; font-size: 13.5px; text-align: left;
-      margin-bottom: 20px; display: none; line-height: 1.5; word-break: break-word;
-    }
-    .auth-field { text-align: left; margin-bottom: 16px; }
-    .auth-label { font-size: 13.5px; font-weight: 600; color: var(--text-soft); margin-bottom: 6px; display: block; }
-    .auth-input-wrap { position: relative; }
-    .auth-input {
-      width: 100%; background: #f8f7f2; border: 1px solid var(--border);
-      border-radius: 12px; padding: 12px 14px; font-size: 15px; color: var(--text);
-      outline: none; font-family: inherit; transition: border-color .15s, background .15s;
-    }
-    .auth-input:focus { border-color: var(--accent); background: var(--surface); }
-    .auth-eye {
-      position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
-      color: var(--text-muted); cursor: pointer; font-size: 15px;
-    }
-    .btn-auth-submit {
-      width: 100%; background: var(--accent); color: #fff; border: none;
-      padding: 13px; border-radius: 14px; font-size: 16px; font-weight: 600;
-      cursor: pointer; font-family: inherit; margin-top: 10px; transition: background .15s;
-    }
-    .btn-auth-submit:hover { background: var(--accent-hover); }
-    .auth-switch { margin-top: 20px; font-size: 14px; color: var(--text-muted); }
-    .auth-switch a { color: var(--accent); text-decoration: none; font-weight: 600; cursor: pointer; }
-    .auth-switch a:hover { text-decoration: underline; }
+function doGet(e) {
+  try {
+    return HtmlService.createHtmlOutputFromFile('Index')
+      .setTitle('Ceres AI')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  } catch (err) {
+    return ContentService.createTextOutput("Ceres AI Backend Web App Service is Running!")
+      .setMimeType(ContentService.MimeType.TEXT);
+  }
+}
 
-    /* ═══ SIDEBAR ═══ */
-    .backdrop { position:fixed; inset:0; background:rgba(31,30,29,.3); z-index:40; display:none; }
-    .backdrop.open { display:block; }
-    .sidebar { width:258px; background:var(--bg-side); border-right:1px solid var(--border);
-      display:flex; flex-direction:column; flex-shrink:0; z-index:50; transition:transform .22s ease; }
-    .side-head { padding:14px 14px 10px; display:flex; align-items:center; gap:9px; }
-    .side-head .name { font-weight:600; font-size:15px; letter-spacing:-.01em; }
-    .btn-new { margin:0 12px 14px; background:transparent; color:var(--accent); border:none;
-      padding:8px 10px; border-radius:9px; cursor:pointer; font-weight:600; font-size:14px;
-      display:flex; align-items:center; gap:9px; font-family:inherit; transition:background .15s; }
-    .btn-new:hover { background:var(--accent-soft); }
-    .side-search { margin:0 12px 8px; position:relative; }
-    .side-search input { width:100%; background:transparent; border:1px solid transparent; color:var(--text);
-      font-size:13.5px; padding:7px 8px 7px 28px; border-radius:8px; outline:none; font-family:inherit; }
-    .side-search input:focus { border-color:var(--border); background:var(--surface); }
-    .side-search i { position:absolute; left:9px; top:10px; color:var(--text-muted); font-size:11.5px; }
-    .side-label { font-size:11.5px; color:var(--text-muted); padding:6px 20px 4px; font-weight:500; }
-    .chat-list { flex:1; overflow-y:auto; padding:0 8px 8px; }
-    .chat-item { padding:7px 11px; font-size:13.5px; color:var(--text-soft); border-radius:8px;
-      cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:1px; }
-    .chat-item:hover { background:#eceade; }
-    .chat-item.active { background:#e8e5d8; font-weight:500; }
-    .chat-item .t { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }
-    .chat-item .del { color:var(--text-muted); opacity:0; font-size:11px; padding:3px 4px; border-radius:5px; }
-    .chat-item:hover .del { opacity:1; }
-    .chat-item .del:hover { color:var(--danger); background:rgba(180,67,58,.09); }
-    .side-foot { padding:8px 12px 12px; border-top:1px solid var(--border); }
-    .side-btn { width:100%; background:none; border:none; color:var(--text-muted); padding:7px 9px;
-      border-radius:8px; cursor:pointer; font-size:13px; display:flex; align-items:center; gap:9px;
-      font-family:inherit; text-align:left; }
-    .side-btn:hover { background:#eceade; color:var(--text); }
-    .side-btn.danger:hover { color:var(--danger); }
-    .user-profile { font-size: 12px; color: var(--text-muted); padding: 4px 9px 8px; display: flex; align-items: center; gap: 6px; }
+// ---------------- Credentials & Token ----------------
 
-    /* ═══ MAIN ═══ */
-    .main { flex:1; display:flex; flex-direction:column; min-width:0; background:var(--bg); }
-    .topbar { height:52px; display:flex; align-items:center; gap:10px; padding:0 16px; flex-shrink:0; }
-    .btn-icon { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:15px;
-      width:32px; height:32px; border-radius:7px; display:flex; align-items:center; justify-content:center; }
-    .btn-icon:hover { background:#eceade; color:var(--text); }
-    .btn-burger { display:none; }
-    .topbar-title { font-size:14.5px; font-weight:500; color:var(--text-soft); flex:1;
-      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .conn { font-size:11.5px; padding:3px 9px; border-radius:20px; display:flex; align-items:center;
-      gap:5px; font-weight:500; white-space:nowrap; border:1px solid transparent; }
-    .conn.loading { background:#fbf5e8; color:#8a6d2f; border-color:#eadcbd; }
-    .conn.ready { background:#eef4ef; color:var(--verify); border-color:#d4e3d8; }
-    .conn.error { background:#fbeeed; color:var(--danger); border-color:#f0d5d2; }
-    .conn .dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
+function getFirebaseCredentials_() {
+  const props = PropertiesService.getScriptProperties();
+  const envKey = props.getProperty("FIREBASE_PRIVATE_KEY");
+  const envEmail = props.getProperty("FIREBASE_CLIENT_EMAIL");
+  const envProject = props.getProperty("FIREBASE_PROJECT_ID");
+  if (envKey && envEmail && envProject) {
+    return { "project_id": envProject, "client_email": envEmail, "private_key": envKey.replace(/\\n/g, '\n') };
+  }
+  return {
+    "project_id": "gen-lang-client-0480784241",
+    "client_email": "firebase-adminsdk-fbsvc@gen-lang-client-0480784241.iam.gserviceaccount.com",
+    "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDbRxhpjd9msf4q\n/eaFKt4j74lthB4F2q6JGIna7J68sRbyIM+zmurAP+xXuVno0TcL+jFDYWBAjQka\nXc5zjfTDZqVkjGvoNqmkt4rEp0Rp/Lt0zw5G7ccZac8hf/GMvzctMic3vVoH1LBF\no63f1YmLXWA1R4X60OkZNZwlHPufOh0GB49HPDu0ji/mmPLuDSvy7+yA/Y0jVlE/\nlhWhTYGScHtjdL9IRrdNcGzdC7JPAm0b8srHoYcEQF5yWJ34lo8RPNFUBOfvShFb\nG5HSh3Y6i/crqI0JlK5d0A+hUk4UkCr/fAfqHyMVRjOhOq9n5Ce/Hf1QHX5MPDOj\naruJXmeLAgMBAAECggEARs4cOelP2+9ZrTQzPYjsFhqA+9YPg8BrX2WHDiQd1bwx\nNpoVt18ssktx25nESINWDQ4K3kERPYbNC7CCu5l5EaeRfHhDV8Ze3QtPSdThKIAt\nX7iEWa7p/XDHK4AO1W3hOTzaoQsJiUHKcZI60O447cGHEW04/BZ9TmCbPPiw32bh\nKQw4TquRJsbfnPuvEiIXZFCFac7fctg3zsZ3H1MW3TaaFvk048Hodkc6SPP73Fjv\nc9DKSgzyqk5MTeNHVzovE4Bfi83vklK7X8xSeZoEiMwu+4C1vvEo8l7xPOBC3kKH\nUaa0gAZj6WRqMDFH5V9FpdHvPejfDXCgO496zAnI4QKBgQD8mMA6pfczZZwrXa2Y\nyJkp0+EwptJaT0dli62/2WiPwbIc/p8ToSvjPDfAJ2u/ffE8COcClboO9AO/HDAe\nTpqcw30lJ3g9hJbp/0h5FywmXiD7FQDPRRuksd5MYt8yi/6xH/krMMdzICbh7xNB\ntZydzO5wFNNy3FK5AGVRcl8dgwKBgQDeO2vxwuCIDNiiFwVicnlJ1A5l+42tqpGu\n3cKqcHQZnIO66wZZ43W/ecTNIK5uWUuyKokn2Vy669xxURUaq7teQzTnz5O2uoNf\npwYxEn+mcU0PG+i8fUg9PEPJPw+Arv8CQRYnxBLzunisfWSEn+0QYW+tjpzyap4L\njvexIVI3WQKBgC838r9D5RkDhpUItvnXjeImzHLGzI27QjJ2UO2LG6O75qrK4jvO\nJiEdUaKm+9pZFa5OT7jI+nXvIYApKcmQkhB57rvyS+TcE0X8xbR1I3isoeetvnAA\nkDFSWqbW2LhfOSYtPuvW+4HG4d3cTjI7W+KXu37SNdDD5ObWbxoxkhw3AoGAKqQe\nNzpcWN6WJqviJZyvdyIQTTMyYTNMVtBITOnc7RkiEZiNFGxXqJDV2UI/Ff9eTeZp\ngNLtPxSIrNmRAhgXkKO2oBAtWK97C7yBrKLPCYHN9ms1gg1L8iwBGblW4Ssy1Rzm\nAmVV+Zw7EWXSBrylATKg+h1WMhGRF8ir8Dnji6kCgYEA/Dc5fNnWquezbw0unCQQ\n2xVTRYlerYFtRmkszCqc46ZWOlozR6mhxVNvVDlWiR3TvQmvj+LwYvH0iXEpERH+\nkmRQfK9d60gpPdgo61lgvjF3tIgaQFYn0VQd87R/ZCmQNznrCJCFh5No7eTCO7Am\nSUN3Qn8Pf9lmOt9BxXR6TLk=\n-----END PRIVATE KEY-----\n"
+  };
+}
 
-    /* ═══ CHAT ═══ */
-    .scroll { flex:1; overflow-y:auto; }
-    .thread { max-width:748px; margin:0 auto; padding:8px 24px 20px; display:flex; flex-direction:column; gap:22px; }
-    .row { display:flex; flex-direction:column; }
-    .row.user { align-items:flex-end; }
-    .bubble-user { background:var(--chip); padding:11px 16px; border-radius:16px; font-size:15px;
-      line-height:1.6; max-width:85%; white-space:pre-wrap; word-break:break-word; }
+function getFirestoreToken_() {
+  const cache = CacheService.getScriptCache();
+  const cachedToken = cache.get("firestore_token");
+  if (cachedToken) return cachedToken;
 
-    .msg-ai { font-size:15.5px; line-height:1.72; color:var(--text); word-break:break-word; }
-    .msg-ai > *:first-child { margin-top:0; }
-    .msg-ai > *:last-child { margin-bottom:0; }
-    .msg-ai p { margin:0 0 14px; }
-    .msg-ai ul, .msg-ai ol { margin:0 0 14px; padding-left:24px; }
-    .msg-ai li { margin-bottom:5px; }
-    .msg-ai h1,.msg-ai h2,.msg-ai h3 { margin:22px 0 10px; font-weight:600; letter-spacing:-.01em; line-height:1.35; }
-    .msg-ai h1 { font-size:21px; } .msg-ai h2 { font-size:18.5px; } .msg-ai h3 { font-size:16.5px; }
-    .msg-ai strong { font-weight:600; }
-    .msg-ai code { background:#efece2; padding:1.5px 5px; border-radius:4px; font-size:13.5px;
-      font-family:ui-monospace,'SF Mono',Menlo,monospace; }
-    .msg-ai pre { background:#f6f4ec; border:1px solid var(--border-soft); border-radius:10px;
-      padding:14px 16px; overflow-x:auto; margin:0 0 14px; }
-    .msg-ai pre code { background:none; padding:0; font-size:13px; line-height:1.6; }
-    .msg-ai table { border-collapse:collapse; margin:0 0 14px; width:100%; font-size:14px; }
-    .msg-ai th, .msg-ai td { border:1px solid var(--border); padding:7px 11px; text-align:left; }
-    .msg-ai th { background:#f3f1e8; font-weight:600; }
-    .msg-ai blockquote { border-left:2.5px solid var(--border); padding-left:14px; color:var(--text-muted); margin:0 0 14px; }
-    .msg-ai a { color:var(--accent); text-decoration:underline; text-underline-offset:2px; }
-    .msg-ai hr { border:none; border-top:1px solid var(--border); margin:20px 0; }
-    .cursor { display:inline-block; width:2px; height:16px; background:var(--accent);
-      margin-left:2px; vertical-align:-2px; animation:blink .9s step-end infinite; }
-    @keyframes blink { 50% { opacity:0; } }
+  const creds = getFirebaseCredentials_();
+  const header = JSON.stringify({ "alg": "RS256", "typ": "JWT" });
+  const now = Math.floor(new Date().getTime() / 1000);
+  const claimSet = JSON.stringify({
+    "iss": creds.client_email, "scope": "https://www.googleapis.com/auth/datastore",
+    "aud": "https://oauth2.googleapis.com/token", "exp": now + 3600, "iat": now
+  });
 
-    /* ═══ LOGO ═══ */
-    .logo { width:26px; height:26px; flex-shrink:0; overflow:visible; }
-    .logo.sm { width:19px; height:19px; }
-    .lo-out { transform-origin:24px 24px; animation:spin 16s linear infinite; }
-    .lo-in { transform-origin:24px 24px; animation:spinr 11s linear infinite; }
-    .lo-core { transform-origin:24px 24px; animation:breathe 4.5s ease-in-out infinite; }
-    .lo-moon { transform-origin:24px 24px; animation:spin 7s linear infinite; }
-    @keyframes spin { to { transform:rotate(360deg); } }
-    @keyframes spinr { to { transform:rotate(-360deg); } }
-    @keyframes breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
-    .logo.busy .lo-out { animation-duration:2.4s; }
-    .logo.busy .lo-in { animation-duration:1.6s; }
-    .logo.busy .lo-moon { animation-duration:1.2s; }
-    .logo.busy .lo-core { animation-duration:1s; }
-    @media (prefers-reduced-motion:reduce) { .lo-out,.lo-in,.lo-core,.lo-moon { animation:none!important; } }
+  const encode = (str) => Utilities.base64EncodeWebSafe(str).replace(/=+$/, '');
+  const signatureInput = encode(header) + "." + encode(claimSet);
+  const signatureBytes = Utilities.computeRsaSha256Signature(signatureInput, creds.private_key);
+  const signature = Utilities.base64EncodeWebSafe(signatureBytes).replace(/=+$/, '');
+  const jwt = signatureInput + "." + signature;
 
-    /* ═══ LIVE ═══ */
-    .live { display:flex; align-items:center; gap:10px; }
-    .live-txt { font-size:14px; color:var(--text-muted); transition:opacity .2s ease; }
-    .live-txt.fade { opacity:0; }
-    .steps { margin-bottom:12px; display:flex; flex-direction:column; }
-    .step { display:flex; align-items:flex-start; gap:9px; font-size:13.5px; color:var(--text-muted);
-      padding:3px 0; transition:color .2s; }
-    .step .ico { width:15px; flex-shrink:0; text-align:center; margin-top:3px; font-size:11px; }
-    .step.done .ico { color:var(--verify); }
-    .step.active { color:var(--text-soft); font-weight:500; }
-    .step.active .ico { color:var(--accent); }
+  const response = UrlFetchApp.fetch("https://oauth2.googleapis.com/token", {
+    method: "post",
+    payload: { "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "assertion": jwt },
+    muteHttpExceptions: true
+  });
 
-    .think { border:1px solid var(--border); border-radius:10px; margin-bottom:14px;
-      background:#f7f5ed; overflow:hidden; width:fit-content; max-width:100%; }
-    .think summary { padding:8px 13px; font-size:13px; color:var(--text-muted); cursor:pointer;
-      user-select:none; display:flex; align-items:center; gap:8px; list-style:none; }
-    .think summary::-webkit-details-marker { display:none; }
-    .think summary:hover { color:var(--text-soft); }
-    .think summary .chev { font-size:9px; transition:transform .2s; }
-    .think[open] summary .chev { transform:rotate(90deg); }
-    .think-body { padding:12px 15px 14px; font-size:13.5px; color:var(--text-soft); line-height:1.68;
-      white-space:pre-wrap; border-top:1px solid var(--border-soft); max-width:640px; }
-    .think-stage { font-weight:600; color:var(--text); display:block; margin:12px 0 3px; font-size:13px; }
-    .think-stage:first-child { margin-top:0; }
+  const data = JSON.parse(response.getContentText());
+  if (data.error) throw new Error("Firebase Authentication Error: " + data.error_description);
+  cache.put("firestore_token", data.access_token, 3300);
+  return data.access_token;
+}
 
-    .meta { display:flex; align-items:center; gap:7px; margin-top:11px; flex-wrap:wrap; }
-    .act { cursor:pointer; color:var(--text-muted); background:none; border:none; font-size:12.5px;
-      display:flex; align-items:center; gap:5px; padding:4px 7px; border-radius:6px; font-family:inherit; }
-    .act:hover { color:var(--text); background:#eceade; }
-    .tag { display:inline-flex; align-items:center; gap:4px; border-radius:20px; padding:2.5px 9px;
-      font-size:11px; font-weight:500; border:1px solid transparent; }
-    .tag.src { background:#f2f0e7; color:var(--text-muted); border-color:var(--border-soft); }
-    .tag.v-high { background:#eef4ef; color:var(--verify); border-color:#d4e3d8; }
-    .tag.v-medium { background:#fbf5e8; color:#8a6d2f; border-color:#eadcbd; }
-    .tag.v-low { background:#fbeeed; color:var(--danger); border-color:#f0d5d2; }
-    .tag.prem { background:#f2effa; color:var(--premium); border-color:#ddd6ef; }
-    .tag.cache { background:#eef4ef; color:var(--verify); border-color:#d4e3d8; }
+function firestoreRequest_(path, method, payload) {
+  const token = getFirestoreToken_();
+  const creds = getFirebaseCredentials_();
+  const url = "https://firestore.googleapis.com/v1/projects/" + creds.project_id +
+              "/databases/" + FIRESTORE_DATABASE_ID + "/documents" + path;
+  const options = {
+    method: method || "get",
+    headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+    muteHttpExceptions: true
+  };
+  if (payload) options.payload = JSON.stringify(payload);
 
-    .empty { display:flex; flex-direction:column; align-items:center; justify-content:center;
-      padding:52px 24px 30px; text-align:center; gap:14px; }
-    .empty h1 { font-family:Georgia,'Times New Roman',serif; font-size:29px; font-weight:400;
-      letter-spacing:-.02em; }
-    .empty p { font-size:14.5px; color:var(--text-muted); max-width:410px; }
+  const response = UrlFetchApp.fetch(url, options);
+  const responseText = response.getContentText();
+  const code = response.getResponseCode();
+  if (code < 200 || code >= 300) throw new Error("Firestore API Error (" + code + "): " + responseText);
+  return JSON.parse(responseText);
+}
 
-    /* ═══ COMPOSER ═══ */
-    .composer-wrap { padding:0 24px calc(14px + env(safe-area-inset-bottom)); flex-shrink:0; position:relative; }
-    .composer {
-      max-width:748px; margin:0 auto; background:var(--surface);
-      border:1px solid var(--border); border-radius:26px; padding:6px 8px 8px;
-      box-shadow:0 2px 10px rgba(31,30,29,.05), 0 1px 2px rgba(31,30,29,.03);
-      transition:border-color .15s, box-shadow .15s;
-    }
-    .composer:focus-within { border-color:#d8d2c4; box-shadow:0 4px 18px rgba(31,30,29,.08); }
-    .composer textarea {
-      width:100%; background:transparent; border:none; color:var(--text); font-size:16px;
-      outline:none; resize:none; max-height:190px; line-height:1.62; padding:12px 12px 6px;
-      font-family:inherit;
-    }
-    .composer textarea::placeholder { color:#a5a294; }
+// ====================================================================
+// 📊 API REGISTRY
+// ====================================================================
 
-    .bar { display:flex; align-items:center; gap:7px; padding:2px 2px 0; }
+const API_REGISTRY = {
+  wikipedia:    { label:'Wikipedia',             tier:'free', monthlyLimit:0, priority:1,
+                  note:'ฟรีไม่จำกัด ไม่ต้องใช้ Key — แหล่งความรู้แกนหลัก' },
+  wikidata:     { label:'Wikidata',              tier:'free', monthlyLimit:0, priority:2,
+                  note:'ฟรีไม่จำกัด — ฐานข้อเท็จจริงเชิงโครงสร้าง' },
+  duckduckgo:   { label:'DuckDuckGo Instant',    tier:'free', monthlyLimit:0, priority:3,
+                  note:'ฟรีไม่จำกัด — สรุปข้อมูลจากหลายเว็บ' },
+  dictionary:   { label:'Free Dictionary',       tier:'free', monthlyLimit:0, priority:4,
+                  note:'ฟรีไม่จำกัด — ความหมายศัพท์อังกฤษ' },
+  frankfurter:  { label:'Frankfurter FX (ECB)',  tier:'free', monthlyLimit:0, priority:5,
+                  note:'ฟรีไม่จำกัด — อัตราแลกเปลี่ยนจากธนาคารกลางยุโรป' },
+  erapi:        { label:'ExchangeRate-API Open', tier:'free', monthlyLimit:0, priority:6,
+                  note:'ฟรี endpoint สาธารณะ — เทียบยืนยันเรท' },
+  restcountries:{ label:'REST Countries',        tier:'free', monthlyLimit:0, priority:7,
+                  note:'ฟรีไม่จำกัด — ข้อมูลประเทศ' },
+  hackernews:   { label:'HackerNews API',        tier:'free', monthlyLimit:0, priority:8,
+                  note:'ฟรีไม่จำกัด (Firebase public API)' },
+  googlenews:   { label:'Google News RSS',       tier:'free', monthlyLimit:0, priority:9,
+                  note:'ฟรีไม่จำกัด (RSS สาธารณะ)' },
+  binance:      { label:'Binance Ticker',        tier:'free', monthlyLimit:0, priority:10,
+                  note:'ฟรี ไม่ต้องใช้ Key — ราคาคริปโตเรียลไทม์' },
+  coinbase:     { label:'Coinbase Spot',         tier:'free', monthlyLimit:0, priority:11,
+                  note:'ฟรี ไม่ต้องใช้ Key — เทียบราคาคริปโต' },
+  openmeteo:    { label:'Open-Meteo',            tier:'free', monthlyLimit:250000, priority:12,
+                  note:'ฟรี ~10,000 ครั้ง/วัน' },
+  wttr:         { label:'wttr.in',               tier:'free', monthlyLimit:10000, priority:13,
+                  note:'ฟรี — เทียบยืนยันอุณหภูมิ' },
+  coingecko:    { label:'CoinGecko',             tier:'free', monthlyLimit:10000, priority:14,
+                  note:'ฟรี ~10,000 ครั้ง/เดือน' },
+  ipapi:        { label:'IP-API',                tier:'free', monthlyLimit:30000, priority:15,
+                  note:'ฟรี 45 ครั้ง/นาที' },
 
-    .cbtn {
-      width:36px; height:36px; border-radius:50%; border:none; cursor:pointer;
-      background:var(--chip); color:var(--text-soft); display:flex; align-items:center;
-      justify-content:center; font-size:15px; flex-shrink:0; transition:background .15s;
-    }
-    .cbtn:hover { background:var(--chip-hover); }
-    .cbtn.rec { background:#fbeeed; color:var(--danger); animation:pulse 1.3s ease-in-out infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+  wolfram:      { label:'Wolfram Alpha',         tier:'premium', monthlyLimit:2000, priority:20,
+                  keyProp:'WOLFRAM_APP_ID', signup:'developer.wolframalpha.com',
+                  note:'ฟรี 2,000 ครั้ง/เดือน — แม่นยำสูงสำหรับข้อเท็จจริง ตัวเลข วิทยาศาสตร์' },
+  brave:        { label:'Brave Search',          tier:'premium', monthlyLimit:2000, priority:21,
+                  keyProp:'BRAVE_API_KEY', signup:'brave.com/search/api',
+                  note:'ฟรี 2,000 ครั้ง/เดือน — ดัชนีค้นหาอิสระคุณภาพสูง' },
+  tavily:       { label:'Tavily Search',         tier:'premium', monthlyLimit:1000, priority:22,
+                  keyProp:'TAVILY_API_KEY', signup:'tavily.com',
+                  note:'ฟรี 1,000 เครดิต/เดือน — ออกแบบเพื่อ AI ให้คำตอบสรุปพร้อมแหล่ง' },
+  exa:          { label:'Exa Search',            tier:'premium', monthlyLimit:1000, priority:23,
+                  keyProp:'EXA_API_KEY', signup:'exa.ai',
+                  note:'ฟรี 1,000 ครั้ง/เดือน — ค้นหาเชิงความหมาย' },
+  gnews:        { label:'GNews',                 tier:'premium', monthlyLimit:3000, priority:24,
+                  keyProp:'GNEWS_API_KEY', signup:'gnews.io',
+                  note:'ฟรี ~100 ครั้ง/วัน — ข่าวจากสำนักข่าวจริง' },
+  guardian:     { label:'The Guardian',          tier:'premium', monthlyLimit:5000, priority:25,
+                  keyProp:'GUARDIAN_API_KEY', signup:'open-platform.theguardian.com',
+                  note:'ฟรีสำหรับใช้ส่วนตัว — ข่าวคุณภาพสูง' },
+  twelvedata:   { label:'Twelve Data (หุ้น)',     tier:'premium', monthlyLimit:2400, priority:26,
+                  keyProp:'TWELVEDATA_API_KEY', signup:'twelvedata.com',
+                  note:'ฟรี 800 ครั้ง/วัน — ราคาหุ้นเรียลไทม์' },
+  openweather:  { label:'OpenWeatherMap',        tier:'premium', monthlyLimit:30000, priority:27,
+                  keyProp:'OPENWEATHER_API_KEY', signup:'openweathermap.org/api',
+                  note:'ฟรี 1,000 ครั้ง/วัน — แหล่งที่สามยืนยันสภาพอากาศ' }
+};
 
-    .pill {
-      display:inline-flex; align-items:center; gap:7px; background:var(--chip); border:none;
-      color:var(--text-soft); border-radius:20px; padding:8px 14px; font-size:14.5px;
-      cursor:pointer; font-family:inherit; transition:background .15s; white-space:nowrap;
-      max-width:230px; overflow:hidden;
-    }
-    .pill:hover { background:var(--chip-hover); }
-    .pill.deep { background:var(--accent-soft); color:var(--accent); }
-    .pill .lbl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .pill .cv { font-size:10px; opacity:.6; }
+// ====================================================================
+// ⚙️ QUOTA & CACHE FUNCTIONS (เหมือนเดิม)
+// ====================================================================
 
-    .spacer { flex:1; }
-    .sendbtn {
-      width:36px; height:36px; border-radius:50%; border:none; cursor:pointer;
-      background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center;
-      font-size:14px; flex-shrink:0; transition:background .15s, transform .1s;
-    }
-    .sendbtn:hover { background:var(--accent-hover); }
-    .sendbtn:active { transform:scale(.94); }
-    .sendbtn:disabled { background:#ddd9cd; cursor:not-allowed; }
+function currentQuotaMonth_() {
+  return Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyy-MM');
+}
 
-    .hint { max-width:748px; margin:9px auto 0; font-size:11.5px; color:#a5a294;
-      text-align:center; user-select:none; }
+function quotaDocPath_(apiId) {
+  const creds = getFirebaseCredentials_();
+  return "projects/" + creds.project_id + "/databases/" + FIRESTORE_DATABASE_ID +
+         "/documents/api_quota/" + apiId + "_" + currentQuotaMonth_();
+}
 
-    /* ═══ POPUP MENU ═══ */
-    .pop {
-      position:absolute; background:var(--surface); border:1px solid var(--border);
-      border-radius:15px; box-shadow:0 10px 34px rgba(31,30,29,.15); padding:6px;
-      min-width:250px; max-width:308px; z-index:120; display:none;
-      max-height:60vh; overflow-y:auto;
-    }
-    .pop.open { display:block; }
-    .pop-sec { font-size:11px; color:var(--text-muted); padding:8px 12px 5px; font-weight:600;
-      letter-spacing:.02em; }
-    .pop-item {
-      width:100%; background:none; border:none; text-align:left; cursor:pointer;
-      padding:9px 12px; border-radius:10px; font-family:inherit; font-size:14px; color:var(--text);
-      display:flex; align-items:flex-start; gap:10px; transition:background .12s;
-    }
-    .pop-item:hover { background:#f5f3eb; }
-    .pop-item .pi-ic { width:17px; flex-shrink:0; margin-top:2px; color:var(--text-muted); font-size:13px; }
-    .pop-item .pi-tx { flex:1; min-width:0; }
-    .pop-item .pi-t { font-weight:500; }
-    .pop-item .pi-d { font-size:12px; color:var(--text-muted); line-height:1.45; margin-top:1px; }
-    .pop-item .pi-ck { color:var(--accent); font-size:12px; margin-top:3px; opacity:0; }
-    .pop-item.sel .pi-ck { opacity:1; }
-    .pop-item.sel .pi-ic { color:var(--accent); }
-    .pop-div { height:1px; background:var(--border-soft); margin:5px 8px; }
+function loadQuotaMap_() {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'quota_map_' + currentQuotaMonth_();
+  const cached = cache.get(cacheKey);
+  if (cached) { try { return JSON.parse(cached); } catch (e) {} }
 
-    /* ═══ MODAL ═══ */
-    .modal { position:fixed; inset:0; background:rgba(31,30,29,.42); z-index:200;
-      display:none; align-items:center; justify-content:center; padding:20px; }
-    .modal.open { display:flex; }
-    .modal-card { background:var(--surface); border-radius:16px; width:100%; max-width:540px;
-      max-height:85vh; display:flex; flex-direction:column; box-shadow:0 24px 60px rgba(31,30,29,.22); }
-    .modal-head { padding:16px 20px; border-bottom:1px solid var(--border-soft);
-      display:flex; align-items:center; justify-content:space-between; }
-    .modal-head h3 { font-size:15.5px; font-weight:600; }
-    .modal-body { padding:14px 20px 20px; overflow-y:auto; }
-    .tier-h { font-size:12px; font-weight:600; margin:18px 0 3px; display:flex; align-items:center; gap:7px; }
-    .tier-h:first-child { margin-top:2px; }
-    .tier-h.free { color:var(--verify); } .tier-h.prem { color:var(--premium); }
-    .tier-d { font-size:11.5px; color:var(--text-muted); margin-bottom:10px; line-height:1.55; }
-    .q-item { padding:9px 0; border-bottom:1px solid var(--border-soft); }
-    .q-item:last-child { border-bottom:none; }
-    .q-item.off { opacity:.5; }
-    .q-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:5px; }
-    .q-name { font-size:13.5px; font-weight:500; }
-    .q-cnt { font-size:11.5px; color:var(--text-muted); white-space:nowrap; }
-    .q-bar { height:4px; background:#f0eee6; border-radius:3px; overflow:hidden; }
-    .q-fill { height:100%; background:var(--verify); border-radius:3px; transition:width .4s ease; }
-    .q-fill.prem { background:var(--premium); }
-    .q-fill.warn { background:#c9924b; } .q-fill.full { background:var(--danger); }
-    .q-note { font-size:11px; color:#a5a294; margin-top:4px; line-height:1.5; }
-    .q-real { color:var(--verify); font-weight:600; }
-    .q-nokey { color:#8a6d2f; font-weight:600; }
-    .q-setup { font-size:11px; color:var(--accent); margin-top:4px;
-      font-family:ui-monospace,monospace; word-break:break-all; }
-
-    @media (max-width:820px) {
-      .sidebar { position:fixed; top:0; left:0; bottom:0; width:80%; max-width:290px;
-        transform:translateX(-100%); box-shadow:2px 0 20px rgba(31,30,29,.14); }
-      .sidebar.open { transform:translateX(0); }
-      .btn-burger { display:flex; }
-      .thread { padding:6px 16px 16px; }
-      .composer-wrap { padding:0 12px calc(10px + env(safe-area-inset-bottom)); }
-      .bubble-user { max-width:90%; }
-      .conn span.txt { display:none; }
-      .conn { padding:4px 7px; }
-      .empty h1 { font-size:24px; }
-      .pill { max-width:150px; font-size:14px; padding:8px 12px; }
-      .hint { display:none; }
-    }
-  </style>
-</head>
-<body>
-
-  <!-- SVG Gradient definition -->
-  <svg width="0" height="0" style="position:absolute">
-    <defs>
-      <linearGradient id="cg" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#e08a68"/><stop offset="55%" stop-color="#c96442"/><stop offset="100%" stop-color="#8f4229"/>
-      </linearGradient>
-      <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" stop-color="#d9a892" stop-opacity="0.12"/>
-        <stop offset="50%" stop-color="#c96442" stop-opacity="0.85"/>
-        <stop offset="100%" stop-color="#d9a892" stop-opacity="0.12"/>
-      </linearGradient>
-    </defs>
-  </svg>
-
-  <!-- ══════════════ AUTH OVERLAY (หน้าสลับ สมัครสมาชิก/เข้าสู่ระบบ) ══════════════ -->
-  <div class="auth-overlay" id="auth-screen">
-    <div class="auth-card">
-      <div class="auth-logo" id="auth-logo-box"></div>
-      <h2 class="auth-title">Ceres AI</h2>
-      <p class="auth-sub" id="auth-subtitle">เข้าสู่ระบบเพื่อใช้งาน Ceres AI</p>
-
-      <div class="auth-error" id="auth-error-box"></div>
-
-      <form id="auth-form" onsubmit="handleAuthSubmit(event)">
-        <!-- Display Name (เฉพาะหน้าสมัครสมาชิก) -->
-        <div class="auth-field" id="field-name" style="display:none">
-          <label class="auth-label">ชื่อผู้ใช้งาน (Display Name)</label>
-          <input type="text" class="auth-input" id="auth-name" placeholder="ชื่อของคุณ">
-        </div>
-
-        <!-- Email -->
-        <div class="auth-field">
-          <label class="auth-label">อีเมล (Email)</label>
-          <input type="email" class="auth-input" id="auth-email" placeholder="name@example.com" required>
-        </div>
-
-        <!-- Password -->
-        <div class="auth-field">
-          <label class="auth-label">รหัสผ่าน (Password)</label>
-          <div class="auth-input-wrap">
-            <input type="password" class="auth-input" id="auth-pass" placeholder="••••••••" required>
-            <i class="fa-regular fa-eye auth-eye" onclick="togglePass('auth-pass', this)"></i>
-          </div>
-        </div>
-
-        <!-- Confirm Password (เฉพาะหน้าสมัครสมาชิก) -->
-        <div class="auth-field" id="field-confirm-pass" style="display:none">
-          <label class="auth-label">ยืนยันรหัสผ่าน (Confirm Password)</label>
-          <div class="auth-input-wrap">
-            <input type="password" class="auth-input" id="auth-confirm-pass" placeholder="••••••••">
-            <i class="fa-regular fa-eye auth-eye" onclick="togglePass('auth-confirm-pass', this)"></i>
-          </div>
-        </div>
-
-        <button type="submit" class="btn-auth-submit" id="btn-auth-submit">เข้าสู่ระบบ</button>
-      </form>
-
-      <div class="auth-switch">
-        <span id="auth-switch-text">ยังไม่มีบัญชี?</span>
-        <a onclick="toggleAuthMode()" id="auth-switch-btn">สมัครสมาชิกที่นี่</a>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══════════════ MAIN CHAT APP ══════════════ -->
-  <div class="app" id="main-app" style="display: none;">
-    <div class="backdrop" id="backdrop" onclick="closeSide()"></div>
-
-    <aside class="sidebar" id="sidebar">
-      <div class="side-head"><span id="side-logo"></span><span class="name">Ceres</span></div>
-      <button class="btn-new" onclick="newChat()"><i class="fa-solid fa-pen-to-square"></i> แชทใหม่</button>
-      <div class="side-search">
-        <i class="fa-solid fa-magnifying-glass"></i>
-        <input type="text" id="q" placeholder="ค้นหา" oninput="renderList()">
-      </div>
-      <div class="side-label">การสนทนา</div>
-      <div class="chat-list" id="list"></div>
-      <div class="side-foot">
-        <div class="user-profile" id="user-display"><i class="fa-solid fa-user"></i> <span>...</span></div>
-        <button class="side-btn" onclick="openQuota()"><i class="fa-solid fa-database"></i> แหล่งข้อมูลและโควตา</button>
-        <button class="side-btn" onclick="logoutUser()"><i class="fa-solid fa-right-from-bracket"></i> ออกจากระบบ</button>
-        <button class="side-btn danger" onclick="clearAll()"><i class="fa-regular fa-trash-can"></i> ลบการสนทนาทั้งหมด</button>
-      </div>
-    </aside>
-
-    <main class="main">
-      <div class="topbar">
-        <button class="btn-icon btn-burger" onclick="toggleSide()"><i class="fa-solid fa-bars"></i></button>
-        <div class="topbar-title" id="topbar-title">Ceres</div>
-        <div id="conn" class="conn loading"><span class="dot"></span><span class="txt">เชื่อมต่อ</span></div>
-      </div>
-
-      <div class="scroll" id="scroll"><div class="thread" id="thread"></div></div>
-
-      <div class="composer-wrap">
-        <!-- POPUP: เลือกโหมด + โมเดล -->
-        <div class="pop" id="pop-model">
-          <div class="pop-sec">โหมดการตอบ</div>
-          <button class="pop-item" id="mode-fast" onclick="setDeep(false)">
-            <span class="pi-ic"><i class="fa-solid fa-bolt"></i></span>
-            <span class="pi-tx"><span class="pi-t">ตอบทันที</span>
-              <span class="pi-d">เร็ว เหมาะกับคำถามทั่วไป</span></span>
-            <span class="pi-ck"><i class="fa-solid fa-check"></i></span>
-          </button>
-          <button class="pop-item" id="mode-deep" onclick="setDeep(true)">
-            <span class="pi-ic"><i class="fa-solid fa-lightbulb"></i></span>
-            <span class="pi-tx"><span class="pi-t">คิดลึก</span>
-              <span class="pi-d">วิเคราะห์โจทย์ → ร่างคำตอบ → ตรวจทาน</span></span>
-            <span class="pi-ck"><i class="fa-solid fa-check"></i></span>
-          </button>
-          <!-- เพิ่ม: ปุ่มโหมดล่าม -->
-          <button class="pop-item" id="mode-interp" onclick="setInterpreter(true)">
-            <span class="pi-ic"><i class="fa-solid fa-language"></i></span>
-            <span class="pi-tx"><span class="pi-t">โหมดล่าม</span>
-              <span class="pi-d">แปลไทย ↔ จีนไต้หวัน อัตโนมัติ</span></span>
-            <span class="pi-ck"><i class="fa-solid fa-check"></i></span>
-          </button>
-          <div class="pop-div"></div>
-          <div class="pop-sec">โมเดล</div>
-          <div id="model-list"></div>
-        </div>
-
-        <!-- POPUP: ปุ่ม + -->
-        <div class="pop" id="pop-plus">
-          <button class="pop-item" onclick="closePops(); newChat();">
-            <span class="pi-ic"><i class="fa-solid fa-pen-to-square"></i></span>
-            <span class="pi-tx"><span class="pi-t">แชทใหม่</span></span>
-          </button>
-          <button class="pop-item" onclick="closePops(); openQuota();">
-            <span class="pi-ic"><i class="fa-solid fa-database"></i></span>
-            <span class="pi-tx"><span class="pi-t">แหล่งข้อมูลและโควตา</span>
-              <span class="pi-d">ดูว่าใช้ API ไหนไปเท่าไหร่แล้ว</span></span>
-          </button>
-          <button class="pop-item" onclick="closePops(); loadModel();">
-            <span class="pi-ic"><i class="fa-solid fa-rotate"></i></span>
-            <span class="pi-tx"><span class="pi-t">เชื่อมต่อโมเดลใหม่</span></span>
-          </button>
-        </div>
-
-        <div class="composer">
-          <textarea id="input" rows="1" placeholder="ถาม Ceres ได้เลย"
-            onkeydown="onKey(event)" oninput="autoGrow(this)"></textarea>
-          <div class="bar">
-            <button class="cbtn" onclick="togglePop('pop-plus', this)" title="เพิ่มเติม">
-              <i class="fa-solid fa-plus"></i></button>
-            <button class="pill" id="pill" onclick="togglePop('pop-model', this)">
-              <span class="lbl" id="pill-lbl">กำลังเชื่อมต่อ</span>
-              <i class="fa-solid fa-chevron-down cv"></i>
-            </button>
-            <div class="spacer"></div>
-            <button class="cbtn" id="mic" onclick="toggleMic()" title="พูดแทนพิมพ์">
-              <i class="fa-solid fa-microphone"></i></button>
-            <button class="sendbtn" id="send" onclick="send()"><i class="fa-solid fa-arrow-up"></i></button>
-          </div>
-        </div>
-        <div class="hint">Ceres อาจตอบผิดพลาดได้ ควรตรวจสอบข้อมูลสำคัญอีกครั้ง</div>
-      </div>
-    </main>
-  </div>
-
-  <div class="modal" id="quota-modal" onclick="if(event.target===this) closeQuota()">
-    <div class="modal-card">
-      <div class="modal-head">
-        <h3>แหล่งข้อมูลและโควตา</h3>
-        <div style="display:flex;gap:2px;">
-          <button class="btn-icon" onclick="openQuota()"><i class="fa-solid fa-rotate"></i></button>
-          <button class="btn-icon" onclick="closeQuota()"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-      </div>
-      <div class="modal-body" id="quota-body"></div>
-    </div>
-  </div>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-  
-  <script>
-    // ════════════════════════════════════════════════════════════
-    // 1. FIREBASE CONFIG & INITIALIZATION
-    // ════════════════════════════════════════════════════════════
-    const firebaseConfig = {
-      apiKey: "AIzaSyDzSBX8_tum7ioMH6PoC3Yok_B184i86tE",
-      authDomain: "gen-lang-client-0480784241.firebaseapp.com",
-      projectId: "gen-lang-client-0480784241",
-      storageBucket: "gen-lang-client-0480784241.firebasestorage.app",
-      messagingSenderId: "586247779364",
-      appId: "1:586247779364:web:72e113d98f02d3e20954b1",
-      measurementId: "G-CSLSMGLEDK"
+  const map = {};
+  try {
+    const query = {
+      "structuredQuery": {
+        "from": [{ "collectionId": "api_quota" }],
+        "where": { "fieldFilter": { "field": { "fieldPath": "month" }, "op": "EQUAL",
+                   "value": { "stringValue": currentQuotaMonth_() } } }
+      }
     };
-
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-
-    let isSignUp = false; // true = หน้าสมัครสมาชิก, false = หน้าเข้าสู่ระบบ
-
-    function toggleAuthMode() {
-      isSignUp = !isSignUp;
-      const title = document.getElementById('auth-subtitle');
-      const nameField = document.getElementById('field-name');
-      const confirmPassField = document.getElementById('field-confirm-pass');
-      const submitBtn = document.getElementById('btn-auth-submit');
-      const switchText = document.getElementById('auth-switch-text');
-      const switchBtn = document.getElementById('auth-switch-btn');
-      const errorBox = document.getElementById('auth-error-box');
-
-      errorBox.style.display = 'none';
-
-      if (isSignUp) {
-        title.textContent = 'สร้างบัญชีใหม่เพื่อเริ่มใช้งาน Ceres AI';
-        nameField.style.display = 'block';
-        confirmPassField.style.display = 'block';
-        submitBtn.textContent = 'สร้างบัญชีผู้ใช้';
-        switchText.textContent = 'มีบัญชีอยู่แล้ว?';
-        switchBtn.textContent = 'เข้าสู่ระบบที่นี่';
-      } else {
-        title.textContent = 'เข้าสู่ระบบเพื่อใช้งาน Ceres AI';
-        nameField.style.display = 'none';
-        confirmPassField.style.display = 'none';
-        submitBtn.textContent = 'เข้าสู่ระบบ';
-        switchText.textContent = 'ยังไม่มีบัญชี?';
-        switchBtn.textContent = 'สมัครสมาชิกที่นี่';
+    const res = firestoreRequest_(":runQuery", "post", query);
+    res.forEach(item => {
+      if (!item.document) return;
+      const d = fromFirestoreFields_(item.document);
+      if (d.apiId) {
+        map[d.apiId] = {
+          used: Number(d.used || 0),
+          providerRemaining: (d.providerRemaining == null) ? null : Number(d.providerRemaining),
+          providerLimit: (d.providerLimit == null) ? null : Number(d.providerLimit)
+        };
       }
-    }
+    });
+  } catch (e) {}
 
-    function togglePass(id, icon) {
-      const input = document.getElementById(id);
-      if (input.type === 'password') {
-        input.type = 'text';
-        icon.className = 'fa-regular fa-eye-slash auth-eye';
-      } else {
-        input.type = 'password';
-        icon.className = 'fa-regular fa-eye auth-eye';
-      }
-    }
+  try { cache.put(cacheKey, JSON.stringify(map), 60); } catch (e) {}
+  return map;
+}
 
-    function handleAuthSubmit(e) {
-      e.preventDefault();
-      const email = document.getElementById('auth-email').value.trim();
-      const pass = document.getElementById('auth-pass').value;
-      const errorBox = document.getElementById('auth-error-box');
-      const submitBtn = document.getElementById('btn-auth-submit');
+function invalidateQuotaCache_() {
+  try { CacheService.getScriptCache().remove('quota_map_' + currentQuotaMonth_()); } catch (e) {}
+}
 
-      errorBox.style.display = 'none';
+function commitQuotaUsage_(usageList) {
+  if (!usageList || usageList.length === 0) return;
+  const month = currentQuotaMonth_();
 
-      if (isSignUp) {
-        const name = document.getElementById('auth-name').value.trim();
-        const confirmPass = document.getElementById('auth-confirm-pass').value;
-
-        if (pass !== confirmPass) {
-          showAuthError("รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน");
-          return;
-        }
-
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'กำลังสร้างบัญชี...';
-
-        auth.createUserWithEmailAndPassword(email, pass)
-          .then((userCredential) => {
-            if (name) {
-              return userCredential.user.updateProfile({ displayName: name });
-            }
-          })
-          .catch((error) => {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'สร้างบัญชีผู้ใช้';
-            showAuthError(translateFirebaseError(error.code, error.message));
-          });
-
-      } else {
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'กำลังเข้าสู่ระบบ...';
-
-        auth.signInWithEmailAndPassword(email, pass)
-          .catch((error) => {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'เข้าสู่ระบบ';
-            showAuthError(translateFirebaseError(error.code, error.message));
-          });
-      }
-    }
-
-    function showAuthError(msg) {
-      const errorBox = document.getElementById('auth-error-box');
-      errorBox.textContent = "เกิดข้อผิดพลาด: " + msg;
-      errorBox.style.display = 'block';
-    }
-
-    function translateFirebaseError(code, defaultMsg) {
-      switch (code) {
-        case 'auth/api-key-not-valid':
-          return 'API Key ไม่ถูกต้อง กรุณาเปิดใช้งาน Identity Toolkit API ใน Google Cloud Console';
-        case 'auth/email-already-in-use':
-          return 'อีเมลนี้ถูกใช้งานแล้ว กรุณาใช้อีเมลอื่น หรือกดเข้าสู่ระบบ';
-        case 'auth/invalid-email':
-          return 'รูปแบบอีเมลไม่ถูกต้อง';
-        case 'auth/weak-password':
-          return 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร';
-        case 'auth/user-not-found':
-        case 'auth/wrong-password':
-        case 'auth/invalid-credential':
-          return 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
-        default:
-          return defaultMsg || code;
-      }
-    }
-
-    function logoutUser() {
-      if (confirm('คุณต้องการออกจากระบบใช่หรือไม่?')) {
-        auth.signOut();
-      }
-    }
-
-    // ════════════════════════════════════════════════════════════
-    // 2. GOOGLE APPS SCRIPT RUNNER FALLBACK
-    // ════════════════════════════════════════════════════════════
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbyjWTQnGyYF-qPn1Ax0G2z_CjebRIqr9DMvz8zQbQsKWjMoPPnqtAabXwXgeiuVRGkF/exec";
-
-    if (typeof google === 'undefined' || !google.script || !google.script.run) {
-      window.google = window.google || {}; window.google.script = window.google.script || {};
-      function mkRunner(ok, fail) {
-        return new Proxy({}, { get(t, prop) {
-          if (prop === 'withSuccessHandler') return (fn) => mkRunner(fn, fail);
-          if (prop === 'withFailureHandler') return (fn) => mkRunner(ok, fn);
-          return function(...args) {
-            fetch(GAS_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-              body: JSON.stringify({ action: prop, args: args }) })
-            .then(r => r.json())
-            .then(d => { if (d && d.status === 'error') { if (fail) fail(d.error || "เกิดข้อผิดพลาด"); }
-                         else { if (ok) ok(d.result !== undefined ? d.result : d); } })
-            .catch(e => { console.error(e); if (fail) fail(e); });
-          };
-        }});
-      }
-      window.google.script.run = mkRunner();
-    }
-
-    function logoSVG(cls) {
-      return `<svg class="logo ${cls||''}" viewBox="0 0 48 48">
-        <g class="lo-out"><ellipse cx="24" cy="24" rx="21" ry="8" fill="none" stroke="url(#rg)" stroke-width="1.7" transform="rotate(-22 24 24)"/></g>
-        <g class="lo-in"><ellipse cx="24" cy="24" rx="17" ry="6" fill="none" stroke="url(#rg)" stroke-width="1.2" opacity="0.6" transform="rotate(38 24 24)"/></g>
-        <g class="lo-core">
-          <circle cx="24" cy="24" r="9.5" fill="url(#cg)"/>
-          <path d="M24 18.6 L24 29.4" stroke="#fff" stroke-width="1.4" stroke-linecap="round" opacity="0.9"/>
-          <path d="M24 20.6 L21.2 22.6 M24 20.6 L26.8 22.6" stroke="#fff" stroke-width="1.2" stroke-linecap="round" opacity="0.8"/>
-          <path d="M24 24 L21.2 26 M24 24 L26.8 26" stroke="#fff" stroke-width="1.2" stroke-linecap="round" opacity="0.8"/>
-        </g>
-        <g class="lo-moon"><circle cx="24" cy="4.5" r="2.5" fill="#e08a68"/></g>
-      </svg>`;
-    }
-
-    // เพิ่ม: ตัวแปร interpreterMode
-    let sessions = [], curId = null, model = "", models = [], deepMode = false, interpreterMode = false, busy = false;
-
-    const STEP = { knowledge:'ค้นข้อมูลจากหลายแหล่ง', wiki:'ค้นข้อมูลจากหลายแหล่ง',
-      weather:'ตรวจสภาพอากาศ', crypto:'เทียบราคาคริปโต', currency:'เทียบอัตราแลกเปลี่ยน',
-      news:'ค้นข่าวล่าสุด', stock:'ดึงราคาหุ้นและข่าวสาร', browse:'อ่านหน้าเว็บ',
-      hackernews:'ดึงข่าวไอที', country:'ค้นข้อมูลประเทศ', ip_lookup:'ตรวจสอบ IP' };
-
-    // ════════════════════════════════════════════════════════════
-    // 3. APP INITIALIZATION & AUTH STATE LISTENER
-    // ════════════════════════════════════════════════════════════
-    window.onload = function() {
-      document.getElementById('side-logo').innerHTML = logoSVG('sm');
-      document.getElementById('auth-logo-box').innerHTML = logoSVG('');
-      
-      marked.setOptions({ breaks:true, gfm:true, highlight:(c,l) => {
-        try { return (l && hljs.getLanguage(l)) ? hljs.highlight(c,{language:l}).value : hljs.highlightAuto(c).value; }
-        catch(e){ return c; } } });
-
-      document.addEventListener('click', e => {
-        if (!e.target.closest('.pop') && !e.target.closest('.pill') && !e.target.closest('.cbtn')) closePops();
-      });
-
-      // ตรวจสอบสถานะการเข้าสู่ระบบผ่าน Firebase Auth
-      auth.onAuthStateChanged((user) => {
-        if (user) {
-          // สมาชิกล็อกอินแล้ว -> ซ่อนหน้า Login และเปิดหน้า Chat App
-          document.getElementById('auth-screen').style.display = 'none';
-          document.getElementById('main-app').style.display = 'flex';
-          
-          const dispName = user.displayName || user.email.split('@')[0];
-          document.getElementById('user-display').innerHTML = `<i class="fa-solid fa-user"></i> <span>${esc(dispName)}</span>`;
-
-          loadSessions(); 
-          loadModel();
-        } else {
-          // ยังไม่ได้ล็อกอิน -> เปิดหน้า Login
-          document.getElementById('auth-screen').style.display = 'flex';
-          document.getElementById('main-app').style.display = 'none';
-        }
-      });
+  const writes = usageList.map(u => {
+    const fields = {
+      apiId: { stringValue: u.apiId }, month: { stringValue: month },
+      lastUsed: { doubleValue: Date.now() }
     };
-
-    function toggleSide(){ document.getElementById('sidebar').classList.toggle('open');
-      document.getElementById('backdrop').classList.toggle('open'); }
-    function closeSide(){ document.getElementById('sidebar').classList.remove('open');
-      document.getElementById('backdrop').classList.remove('open'); }
-    function closeSideMobile(){ if (window.innerWidth <= 820) closeSide(); }
-
-    /* ═══ POPUP ═══ */
-    function closePops() { document.querySelectorAll('.pop').forEach(p => p.classList.remove('open')); }
-
-    function togglePop(id, anchor) {
-      const p = document.getElementById(id);
-      const wasOpen = p.classList.contains('open');
-      closePops();
-      if (wasOpen) return;
-
-      const wrap = document.querySelector('.composer-wrap');
-      const wr = wrap.getBoundingClientRect();
-      const ar = anchor.getBoundingClientRect();
-
-      p.classList.add('open');
-      const pw = p.offsetWidth;
-      let left = ar.left - wr.left;
-      if (left + pw > wr.width - 8) left = wr.width - pw - 8;
-      if (left < 8) left = 8;
-      p.style.left = left + 'px';
-      p.style.bottom = (wr.bottom - ar.top + 8) + 'px';
+    const maskPaths = ["apiId", "month", "lastUsed"];
+    if (typeof u.providerRemaining === 'number' && !isNaN(u.providerRemaining)) {
+      fields.providerRemaining = { doubleValue: u.providerRemaining };
+      maskPaths.push("providerRemaining");
     }
-
-    /* ═══ SESSIONS ═══ */
-    function loadSessions() {
-      google.script.run.withSuccessHandler(db => {
-        sessions = db || [];
-        renderList();
-        if (sessions.length > 0) {
-          pick(sessions[0].id);
-        } else {
-          showDraftChat();
-        }
-      }).withFailureHandler(e => { console.error(e); showDraftChat(); }).getUserSessions();
+    if (typeof u.providerLimit === 'number' && !isNaN(u.providerLimit)) {
+      fields.providerLimit = { doubleValue: u.providerLimit };
+      maskPaths.push("providerLimit");
     }
+    return {
+      update: { name: quotaDocPath_(u.apiId), fields: fields },
+      updateMask: { fieldPaths: maskPaths },
+      updateTransforms: [{ fieldPath: "used", increment: { integerValue: String(u.count || 1) } }]
+    };
+  });
 
-    function newChat() {
-      curId = null;
-      deepMode = false;
-      interpreterMode = false;
-      syncPill();
-      document.getElementById('thread').innerHTML = '';
-      showEmpty();
-      closeSideMobile();
-      document.getElementById('input').focus();
+  try {
+    const token = getFirestoreToken_();
+    const creds = getFirebaseCredentials_();
+    UrlFetchApp.fetch("https://firestore.googleapis.com/v1/projects/" + creds.project_id +
+      "/databases/" + FIRESTORE_DATABASE_ID + "/documents:commit", {
+      method: "post",
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      payload: JSON.stringify({ writes: writes }), muteHttpExceptions: true
+    });
+    invalidateQuotaCache_();
+  } catch (e) { console.error("บันทึกโควตาขัดข้อง: " + e.toString()); }
+}
+
+function newUsageCollector_() {
+  const bag = {};
+  return {
+    add: function (apiId, info) {
+      if (!apiId) return;
+      if (!bag[apiId]) bag[apiId] = { apiId: apiId, count: 0, providerRemaining: null, providerLimit: null };
+      bag[apiId].count++;
+      if (info) {
+        if (typeof info.remaining === 'number') bag[apiId].providerRemaining = info.remaining;
+        if (typeof info.limit === 'number') bag[apiId].providerLimit = info.limit;
+      }
+    },
+    flush: function () {
+      const list = Object.keys(bag).map(k => bag[k]);
+      if (list.length > 0) commitQuotaUsage_(list);
+      return list;
     }
+  };
+}
 
-    function pick(id) { closeSideMobile(); if (curId === id) return; curId = id; renderList(); openChat(); }
+function readRateLimitHeaders_(response) {
+  try {
+    const headers = response.getAllHeaders();
+    const lower = {};
+    for (const k in headers) lower[k.toLowerCase()] = headers[k];
 
-    function delChat(e, id) {
-      e.stopPropagation();
-      if (!confirm('ลบการสนทนานี้?')) return;
-      google.script.run.withSuccessHandler(() => {
-        sessions = sessions.filter(s => s.id !== id);
-        if (!sessions.length) newChat();
-        else { if (curId === id) curId = sessions[0].id; renderList(); openChat(); }
-      }).withFailureHandler(e2 => alert("ลบไม่สำเร็จ: " + e2)).deleteUserSession(id);
+    const remKeys = ['x-ratelimit-remaining','x-ratelimit-remaining-month','x-rate-limit-remaining',
+                     'ratelimit-remaining','x-requests-remaining','x-api-quota-remaining'];
+    const limKeys = ['x-ratelimit-limit','x-ratelimit-limit-month','x-rate-limit-limit',
+                     'ratelimit-limit','x-requests-limit'];
+
+    let remaining = null, limit = null;
+    for (const k of remKeys) {
+      if (lower[k] !== undefined) {
+        const v = Number(String(lower[k]).split(',')[0].trim());
+        if (!isNaN(v)) { remaining = v; break; }
+      }
     }
-
-    function clearAll() {
-      if (!confirm('ลบการสนทนาทั้งหมด?')) return;
-      let n = 0; const total = sessions.length;
-      sessions.forEach(s => google.script.run.withSuccessHandler(() => {
-        if (++n === total) { sessions = []; newChat(); } }).deleteUserSession(s.id));
+    for (const k of limKeys) {
+      if (lower[k] !== undefined) {
+        const v = Number(String(lower[k]).split(',')[0].trim());
+        if (!isNaN(v)) { limit = v; break; }
+      }
     }
+    if (remaining === null && limit === null) return null;
+    return { remaining: remaining, limit: limit };
+  } catch (e) { return null; }
+}
 
-    function cur() { return sessions.find(s => s.id === curId); }
+function getApiKey_(apiId) {
+  const meta = API_REGISTRY[apiId];
+  if (!meta || !meta.keyProp) return null;
+  const key = PropertiesService.getScriptProperties().getProperty(meta.keyProp);
+  if (key) return key;
 
-    function renderList() {
-      const el = document.getElementById('list');
-      const q = (document.getElementById('q').value || '').toLowerCase().trim();
-      el.innerHTML = '';
-      sessions.filter(s => !q || (s.title||'').toLowerCase().includes(q)).forEach(s => {
-        const d = document.createElement('div');
-        d.className = 'chat-item' + (s.id === curId ? ' active' : '');
-        d.onclick = () => pick(s.id);
-        d.innerHTML = `<span class="t">${esc(s.title || 'แชทใหม่')}</span>
-          <i class="fa-solid fa-xmark del" onclick="delChat(event,'${s.id}')"></i>`;
-        el.appendChild(d);
-      });
+  // Key สำรองใช้งาน
+  if (apiId === 'wolfram') return "E7H6WXTV7X";
+  if (apiId === 'tavily') return "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";
+
+  return null;
+}
+
+function canUseApi_(apiId, quotaMap) {
+  const meta = API_REGISTRY[apiId];
+  if (!meta) return true;
+  if (meta.keyProp && !getApiKey_(apiId)) return false;
+  const q = (quotaMap || loadQuotaMap_())[apiId];
+  if (!q) return true;
+  if (typeof q.providerRemaining === 'number' && q.providerRemaining <= 0) return false;
+  if (!meta.monthlyLimit) return true;
+  return Number(q.used || 0) < meta.monthlyLimit;
+}
+
+function getApiQuotaStatus() {
+  const map = loadQuotaMap_();
+  const list = [];
+  for (const id in API_REGISTRY) {
+    const meta = API_REGISTRY[id];
+    const q = map[id] || {};
+    const used = Number(q.used || 0);
+    const needsKey = !!meta.keyProp;
+    list.push({
+      id: id, label: meta.label, tier: meta.tier, used: used,
+      limit: meta.monthlyLimit, unlimited: !meta.monthlyLimit,
+      remaining: meta.monthlyLimit ? Math.max(0, meta.monthlyLimit - used) : null,
+      percent: meta.monthlyLimit ? Math.min(100, Math.round((used / meta.monthlyLimit) * 100)) : 0,
+      providerRemaining: (typeof q.providerRemaining === 'number') ? q.providerRemaining : null,
+      needsKey: needsKey, keyConfigured: needsKey ? !!getApiKey_(id) : true,
+      keyProp: meta.keyProp || null, signup: meta.signup || null,
+      exhausted: !canUseApi_(id, map), note: meta.note
+    });
+  }
+  list.sort((a, b) => API_REGISTRY[a.id].priority - API_REGISTRY[b.id].priority);
+  return { success: true, month: currentQuotaMonth_(), apis: list };
+}
+
+// ====================================================================
+// PARALLEL FETCH & HELPER FUNCTIONS (เหมือนเดิม)
+// ====================================================================
+
+function parallelFetch_(requests, usage) {
+  const results = {};
+  if (!requests || requests.length === 0) return results;
+
+  const opts = requests.map(r => {
+    const o = {
+      url: r.url, method: r.method || 'get', muteHttpExceptions: true, followRedirects: true,
+      headers: Object.assign({ "User-Agent": "CeresAI/1.0 (personal assistant)" }, r.headers || {})
+    };
+    if (r.payload) {
+      o.payload = typeof r.payload === 'string' ? r.payload : JSON.stringify(r.payload);
+      o.contentType = r.contentType || 'application/json';
     }
+    return o;
+  });
 
-    function openChat() {
-      const t = document.getElementById('thread');
-      t.innerHTML = '';
-      if (!curId) return;
-      const s = cur();
-      document.getElementById('topbar-title').textContent = (s && s.title) || 'Ceres';
-      deepMode = !!(s && s.deepThinking);
-      interpreterMode = !!(s && s.interpreterMode);  // เพิ่ม: อ่านค่า interpreterMode
-      syncPill();
+  let responses;
+  try { responses = UrlFetchApp.fetchAll(opts); }
+  catch (e) {
+    responses = opts.map(o => { try { return UrlFetchApp.fetch(o.url, o); } catch (err) { return null; } });
+  }
 
-      google.script.run.withSuccessHandler(msgs => {
-        if (!s) return;
-        s.messages = msgs || [];
-        if (!s.messages.length) { showEmpty(); return; }
-        s.messages.forEach(m => {
-          if (m.role === 'user') addUser(m.content);
-          else addAI(m.thinking, m.content, m.source || null, false);
+  requests.forEach((r, i) => {
+    const res = responses[i];
+    if (!res) { results[r.key] = null; return; }
+    try {
+      const code = res.getResponseCode();
+      if (code >= 200 && code < 300) {
+        const txt = res.getContentText();
+        const t = txt.trim();
+        results[r.key] = (t.startsWith('{') || t.startsWith('[')) ? JSON.parse(txt) : txt;
+        if (r.apiId && usage) usage.add(r.apiId, readRateLimitHeaders_(res));
+      } else {
+        results[r.key] = null;
+        if (r.apiId && usage && code !== 401 && code !== 403) usage.add(r.apiId, readRateLimitHeaders_(res));
+      }
+    } catch (e) { results[r.key] = null; }
+  });
+
+  return results;
+}
+
+function extractFacts_(text) {
+  if (!text) return { years: [], numbers: [] };
+  const years = (text.match(/\b(1[0-9]{3}|20[0-9]{2}|2[1-9][0-9]{2})\b/g) || []);
+  const numbers = (text.match(/\b\d[\d,]{2,}\b/g) || []).map(n => n.replace(/,/g, ''));
+  return {
+    years: years.filter((v, i, a) => a.indexOf(v) === i).slice(0, 8),
+    numbers: numbers.filter((v, i, a) => a.indexOf(v) === i).slice(0, 8)
+  };
+}
+
+function crossCheckTexts_(sources) {
+  if (!sources || sources.length === 0) return { level:'none', label:'ไม่มีข้อมูล', detail:'' };
+  if (sources.length === 1) return { level:'single', label:'มีแหล่งเดียว',
+    detail:'พบข้อมูลจากแหล่งเดียว ยังไม่ได้ตรวจสอบข้ามแหล่ง' };
+
+  const factSets = sources.map(s => extractFacts_(s.content));
+  const yearCount = {};
+  factSets.forEach(f => f.years.forEach(y => { yearCount[y] = (yearCount[y] || 0) + 1; }));
+  const sharedYears = Object.keys(yearCount).filter(y => yearCount[y] >= 2);
+
+  const wordSets = sources.map(s => new Set((s.content || '').toLowerCase()
+    .replace(/[^\u0E00-\u0E7Fa-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 3)));
+
+  let overlap = 0, pairs = 0;
+  for (let i = 0; i < wordSets.length; i++) {
+    for (let j = i + 1; j < wordSets.length; j++) {
+      const a = wordSets[i], b = wordSets[j];
+      if (a.size === 0 || b.size === 0) continue;
+      let inter = 0;
+      a.forEach(w => { if (b.has(w)) inter++; });
+      overlap += inter / Math.min(a.size, b.size);
+      pairs++;
+    }
+  }
+  const avg = pairs > 0 ? overlap / pairs : 0;
+
+  if (sharedYears.length >= 1 && avg >= 0.12) {
+    return { level:'high', label:'ตรวจสอบแล้ว ' + sources.length + ' แหล่งตรงกัน',
+      detail:'ข้อมูลจาก ' + sources.length + ' แหล่งสอดคล้องกัน' +
+             (sharedYears.length ? ' (ปีที่ตรงกัน: ' + sharedYears.slice(0,3).join(', ') + ')' : '') };
+  }
+  if (avg >= 0.06) {
+    return { level:'medium', label:'สอดคล้องบางส่วน (' + sources.length + ' แหล่ง)',
+      detail:'ข้อมูลสอดคล้องกันบางส่วน แต่ละแหล่งเน้นรายละเอียดต่างกัน' };
+  }
+  return { level:'low', label:'ข้อมูลต่างกัน (' + sources.length + ' แหล่ง)',
+    detail:'แหล่งข้อมูลให้รายละเอียดต่างกันพอสมควร ต้องแจ้งผู้ใช้ว่าข้อมูลอาจไม่ตรงกัน' };
+}
+
+function crossCheckNumbers_(values, tolerancePercent, unit) {
+  const valid = values.filter(v => v && typeof v.value === 'number' && !isNaN(v.value));
+  if (valid.length === 0) return { level:'none', label:'ไม่มีข้อมูล', detail:'', consensus:null };
+  if (valid.length === 1) return { level:'single', label:'มีแหล่งเดียว',
+    detail:'ได้ข้อมูลจาก ' + valid[0].source + ' เพียงแหล่งเดียว', consensus: valid[0].value };
+
+  const nums = valid.map(v => v.value);
+  const max = Math.max.apply(null, nums), min = Math.min.apply(null, nums);
+  const avg = nums.reduce((a,b) => a+b, 0) / nums.length;
+  const diff = avg !== 0 ? ((max - min) / Math.abs(avg)) * 100 : 0;
+  const list = valid.map(v => v.source + ': ' + v.value + (unit || '')).join(' | ');
+
+  if (diff <= tolerancePercent) {
+    return { level:'high', label:'ยืนยันตรงกัน ' + valid.length + ' แหล่ง',
+      detail:'ข้อมูลตรงกัน (ต่างกัน ' + diff.toFixed(2) + '%) — ' + list,
+      consensus: Number(avg.toFixed(6)) };
+  }
+  return { level:'low', label:'ข้อมูลต่างกัน ' + diff.toFixed(1) + '%',
+    detail:'แหล่งข้อมูลให้ค่าต่างกัน ' + diff.toFixed(2) + '% ต้องแจ้งผู้ใช้ — ' + list,
+    consensus: Number(avg.toFixed(6)) };
+}
+
+// ============================================
+// ฟังก์ชันอื่นๆ - Settings, Auth, Memory, Context (เหมือนเดิมทั้งหมด ไม่แก้ไข)
+// ============================================
+
+function getNgrokUrl_() {
+  const props = PropertiesService.getScriptProperties();
+  return (props.getProperty(PROP_KEY_NGROK_URL) || DEFAULT_NGROK_URL).replace(/\/$/, "");
+}
+
+function getSettings() { return { ngrokUrl: getNgrokUrl_() }; }
+
+function getUserEmail_() {
+  const email = Session.getActiveUser().getEmail();
+  return email || "anonymous-user@ceres.local";
+}
+
+function assertSessionOwnership_(sessionId) {
+  if (!sessionId) throw new Error("ไม่ระบุห้องสนทนา");
+  const email = getUserEmail_();
+  let doc;
+  try { doc = firestoreRequest_("/sessions/" + sessionId, "get"); }
+  catch (e) { throw new Error("ไม่พบห้องสนทนานี้"); }
+  const session = fromFirestoreFields_(doc);
+  if (session.userId !== email) throw new Error("ไม่มีสิทธิ์เข้าถึงห้องสนทนานี้");
+  return session;
+}
+
+function toFirestoreFields_(obj) {
+  const fields = {};
+  for (const key in obj) {
+    const val = obj[key];
+    if (typeof val === "string") fields[key] = { "stringValue": val };
+    else if (typeof val === "number") fields[key] = { "doubleValue": val };
+    else if (typeof val === "boolean") fields[key] = { "booleanValue": val };
+    else if (val === null) fields[key] = { "nullValue": null };
+  }
+  return { "fields": fields };
+}
+
+function fromFirestoreFields_(doc) {
+  const obj = {};
+  const fields = doc.fields || {};
+  for (const key in fields) {
+    const f = fields[key];
+    if (f.stringValue !== undefined) obj[key] = f.stringValue;
+    else if (f.doubleValue !== undefined) obj[key] = Number(f.doubleValue);
+    else if (f.integerValue !== undefined) obj[key] = Number(f.integerValue);
+    else if (f.booleanValue !== undefined) obj[key] = f.booleanValue;
+    else if (f.nullValue !== undefined) obj[key] = null;
+  }
+  if (doc.name) {
+    const parts = doc.name.split("/");
+    obj.id = parts[parts.length - 1];
+  }
+  return obj;
+}
+
+// ============================================
+// SESSIONS
+// ============================================
+
+function getUserSessions() {
+  const email = getUserEmail_();
+  const query = { "structuredQuery": { "from": [{ "collectionId": "sessions" }],
+    "where": { "fieldFilter": { "field": { "fieldPath": "userId" }, "op": "EQUAL",
+               "value": { "stringValue": email } } } } };
+  try {
+    const response = firestoreRequest_(":runQuery", "post", query);
+    const sessions = [];
+    response.forEach(item => { if (item.document) sessions.push(fromFirestoreFields_(item.document)); });
+    sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+    return sessions;
+  } catch (e) { return []; }
+}
+
+function createUserSession(title) {
+  const email = getUserEmail_();
+  const sessionId = "session_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+  const sessionData = {
+    userId: email, title: title || "แชทใหม่", deepThinking: false, interpreterMode: false,
+    createdAt: Date.now(), updatedAt: Date.now()
+  };
+  firestoreRequest_("/sessions/" + sessionId, "patch", toFirestoreFields_(sessionData));
+  sessionData.id = sessionId;
+  return sessionData;
+}
+
+function deleteUserSession(sessionId) {
+  assertSessionOwnership_(sessionId);
+  firestoreRequest_("/sessions/" + sessionId, "delete");
+  const query = { "structuredQuery": { "from": [{ "collectionId": "messages" }],
+    "where": { "fieldFilter": { "field": { "fieldPath": "sessionId" }, "op": "EQUAL",
+               "value": { "stringValue": sessionId } } } } };
+  try {
+    const response = firestoreRequest_(":runQuery", "post", query);
+    response.forEach(item => {
+      if (item.document) firestoreRequest_("/messages/" + fromFirestoreFields_(item.document).id, "delete");
+    });
+  } catch (e) {}
+  return { success: true };
+}
+
+function updateSessionMode(sessionId, deepThinking) {
+  assertSessionOwnership_(sessionId);
+  firestoreRequest_("/sessions/" + sessionId + "?updateMask.fieldPaths=deepThinking", "patch",
+    toFirestoreFields_({ deepThinking: !!deepThinking }));
+  return { success: true, deepThinking: !!deepThinking };
+}
+
+// เพิ่ม: updateSessionInterpreterMode ฟังก์ชันใหม่
+function updateSessionInterpreterMode(sessionId, interpreterMode) {
+  assertSessionOwnership_(sessionId);
+  firestoreRequest_("/sessions/" + sessionId + "?updateMask.fieldPaths=interpreterMode", "patch",
+    toFirestoreFields_({ interpreterMode: !!interpreterMode }));
+  return { success: true, interpreterMode: !!interpreterMode };
+}
+
+function updateSessionTitle(sessionId, title) {
+  assertSessionOwnership_(sessionId);
+  firestoreRequest_("/sessions/" + sessionId + "?updateMask.fieldPaths=title&updateMask.fieldPaths=updatedAt",
+    "patch", toFirestoreFields_({ title: title, updatedAt: Date.now() }));
+  return { success: true };
+}
+
+// ============================================
+// MESSAGES
+// ============================================
+
+function getChatMessages(sessionId) {
+  assertSessionOwnership_(sessionId);
+  const query = { "structuredQuery": { "from": [{ "collectionId": "messages" }],
+    "where": { "fieldFilter": { "field": { "fieldPath": "sessionId" }, "op": "EQUAL",
+               "value": { "stringValue": sessionId } } } } };
+  try {
+    const response = firestoreRequest_(":runQuery", "post", query);
+    const messages = [];
+    response.forEach(item => { if (item.document) messages.push(fromFirestoreFields_(item.document)); });
+    messages.sort((a, b) => a.timestamp - b.timestamp);
+    return messages;
+  } catch (e) { return []; }
+}
+
+function saveChatMessage(sessionId, role, content, thinking, source) {
+  assertSessionOwnership_(sessionId);
+  const email = getUserEmail_();
+  const messageId = "msg_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+  firestoreRequest_("/messages/" + messageId, "patch", toFirestoreFields_({
+    sessionId: sessionId, userId: email, role: role,
+    content: content || "", thinking: thinking || "", source: source || "", timestamp: Date.now()
+  }));
+  try {
+    firestoreRequest_("/sessions/" + sessionId + "?updateMask.fieldPaths=updatedAt", "patch",
+      toFirestoreFields_({ userId: email, updatedAt: Date.now() }));
+  } catch (e) {}
+  return { success: true };
+}
+
+function deleteLastAssistantMessage(sessionId) {
+  assertSessionOwnership_(sessionId);
+  const msgs = getChatMessages(sessionId);
+  if (msgs.length === 0) return { success: false };
+  const last = msgs[msgs.length - 1];
+  if (last.role === 'assistant') {
+    firestoreRequest_("/messages/" + last.id, "delete");
+    return { success: true };
+  }
+  return { success: false };
+}
+
+// ============================================
+// MEMORY (เหมือนเดิม)
+// ============================================
+
+function markMemoryDirty_(sessionId, email) {
+  try {
+    firestoreRequest_("/pending_memory/" + encodeURIComponent(email), "patch",
+      toFirestoreFields_({ sessionId: sessionId, email: email, ts: Date.now() }));
+  } catch (e) {}
+}
+
+function processMemoryQueue() {
+  const query = { "structuredQuery": { "from": [{ "collectionId": "pending_memory" }] } };
+  let items;
+  try { items = firestoreRequest_(":runQuery", "post", query); } catch (e) { return; }
+  items.forEach(item => {
+    if (!item.document) return;
+    const data = fromFirestoreFields_(item.document);
+    try {
+      updateUserMemoryFromChat_(data.sessionId, data.email, "");
+      firestoreRequest_("/pending_memory/" + data.id, "delete");
+    } catch (e) { console.error("ประมวลผลความจำขัดข้อง: " + e.toString()); }
+  });
+}
+
+function getUserMemory_(email) {
+  try {
+    return fromFirestoreFields_(firestoreRequest_("/user_memories/" + encodeURIComponent(email), "get")).summary || "";
+  } catch (e) { return ""; }
+}
+
+function saveUserMemory(email, summaryText) {
+  firestoreRequest_("/user_memories/" + encodeURIComponent(email), "patch",
+    toFirestoreFields_({ summary: summaryText, updatedAt: Date.now() }));
+  return { success: true };
+}
+
+function updateUserMemoryFromChat_(sessionId, email, selectedModel) {
+  try {
+    const msgs = getChatMessages(sessionId);
+    if (msgs.length < 2) return;
+    const recentText = msgs.slice(-6).map(m => m.role + ": " + m.content).join("\n");
+    const currentMemory = getUserMemory_(email);
+    const systemPrompt =
+      "สรุปข้อมูลถาวรเกี่ยวกับผู้ใช้จากบทสนทนา เก็บเฉพาะ: ชื่อ, อาชีพ, ความสนใจ, ความชอบ, คำสั่งประจำ\n" +
+      "ห้ามเก็บ: คำทักทาย, คำถามครั้งเดียว, เรื่องชั่วคราว\n\n" +
+      "ข้อมูลเดิม:\n" + (currentMemory || "(ยังไม่มี)") + "\n\n" +
+      "บทสนทนาล่าสุด:\n" + recentText + "\n\n" +
+      "ตอบเป็นภาษาไทยแบบ bullet สั้นๆ ไม่เกิน 120 คำ";
+    const result = callLLM_([{ role:"system", content:systemPrompt },
+                             { role:"user", content:"สรุปข้อมูลผู้ใช้" }],
+                            selectedModel, { temperature: 0.1, max_tokens: 300 });
+    const s = splitThinking_(result.rawReply).replyText.trim();
+    if (s && s !== currentMemory) saveUserMemory(email, s);
+  } catch (e) {}
+}
+
+// ============================================
+// CONTEXT (เหมือนเดิม)
+// ============================================
+
+function getConversationContext_(sessionId) {
+  const token = getFirestoreToken_();
+  const creds = getFirebaseCredentials_();
+  const base = "https://firestore.googleapis.com/v1/projects/" + creds.project_id +
+               "/databases/" + FIRESTORE_DATABASE_ID + "/documents";
+  const authHeaders = { "Authorization": "Bearer " + token, "Content-Type": "application/json" };
+  const email = getUserEmail_();
+
+  const messagesQuery = { "structuredQuery": { "from": [{ "collectionId": "messages" }],
+    "where": { "fieldFilter": { "field": { "fieldPath": "sessionId" }, "op": "EQUAL",
+               "value": { "stringValue": sessionId } } } } };
+
+  const responses = UrlFetchApp.fetchAll([
+    { url: base + "/sessions/" + sessionId, method:"get", headers:authHeaders, muteHttpExceptions:true },
+    { url: base + "/user_memories/" + encodeURIComponent(email), method:"get", headers:authHeaders, muteHttpExceptions:true },
+    { url: base + ":runQuery", method:"post", headers:authHeaders, contentType:"application/json",
+      payload: JSON.stringify(messagesQuery), muteHttpExceptions:true }
+  ]);
+
+  let deepThinking = false, interpreterMode = false;
+  try {
+    if (responses[0].getResponseCode() < 300) {
+      const s = fromFirestoreFields_(JSON.parse(responses[0].getContentText()));
+      deepThinking = !!s.deepThinking;
+      interpreterMode = !!s.interpreterMode;
+    }
+  } catch (e) {}
+
+  let userMemory = "";
+  try {
+    if (responses[1].getResponseCode() < 300) {
+      userMemory = fromFirestoreFields_(JSON.parse(responses[1].getContentText())).summary || "";
+      if (userMemory.length > 1000) userMemory = userMemory.substring(0, 1000) + "...[ย่อ]";
+    }
+  } catch (e) {}
+
+  let history = [];
+  try {
+    if (responses[2].getResponseCode() < 300) {
+      const items = JSON.parse(responses[2].getContentText());
+      const msgs = [];
+      items.forEach(item => { if (item.document) msgs.push(fromFirestoreFields_(item.document)); });
+      msgs.sort((a, b) => a.timestamp - b.timestamp);
+      history = msgs.slice(-4).map(m => ({
+        role: m.role,
+        content: m.content.length > 1200 ? m.content.substring(0, 1200) + "\n...[ย่อ]" : m.content
+      }));
+    }
+  } catch (e) {}
+
+  return { deepThinking, interpreterMode, userMemory, history };
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+function getAvailableModels() {
+  const props = PropertiesService.getScriptProperties();
+  const geminiKey = props.getProperty("GEMINI_API_KEY");
+  const groqKey = props.getProperty("GROQ_API_KEY");
+  const openRouterKey = props.getProperty("OPENROUTER_API_KEY");
+
+  const models = [];
+  if (geminiKey) models.push("gemini-1.5-flash", "gemini-1.5-pro");
+  if (groqKey) models.push("llama3-8b-8192", "gemma2-9b-it");
+  if (openRouterKey) models.push("google/gemini-2.5-flash");
+
+  try {
+    const response = UrlFetchApp.fetch(getNgrokUrl_() + "/api/v1/models", {
+      method:"get", headers:{ "ngrok-skip-browser-warning":"true" }, muteHttpExceptions:true });
+    const t = response.getContentText();
+    if (t.trim().startsWith('{') || t.trim().startsWith('[')) {
+      const json = JSON.parse(t);
+      if (json.models && Array.isArray(json.models)) {
+        json.models.forEach(m => {
+          if (m.loaded_instances && m.loaded_instances.length > 0) {
+            m.loaded_instances.forEach(inst => {
+              if (inst.id && !models.includes(inst.id)) models.push(inst.id);
+            });
+          }
         });
-        scrollDown();
-      }).withFailureHandler(e => console.error(e)).getChatMessages(curId);
-    }
-
-    function showEmpty() {
-      document.getElementById('thread').innerHTML = `
-        <div class="empty">${logoSVG('')}
-          <h1>สวัสดีค่ะ</h1>
-          <p>ถามอะไรก็ได้ หรือเลือกโหมด "คิดลึก" จากปุ่มด้านล่าง เมื่ออยากให้ Ceres วิเคราะห์โจทย์ก่อนลงมือตอบ</p>
-        </div>`;
-    }
-
-    function showDraftChat() {
-      curId = null;
-      deepMode = false;
-      interpreterMode = false;
-      syncPill();
-      document.getElementById('topbar-title').textContent = 'Ceres';
-      showEmpty();
-    }
-
-    /* ═══ MODEL ═══ */
-    function shortName(m) {
-      let s = String(m).split('/').pop();
-      s = s.replace(/-(instruct|it|chat)$/i, '');
-      return s.length > 22 ? s.substring(0,21) + '…' : s;
-    }
-
-    function loadModel() {
-      setConn('loading', 'เชื่อมต่อ');
-      google.script.run.withSuccessHandler(r => {
-        if (r.success && r.models && r.models.length) {
-          models = r.models;
-          if (!model || models.indexOf(model) === -1) model = models[0];
-          setConn('ready','พร้อม');
-        } else { models = []; model = ""; setConn('error','ไม่พบโมเดล'); }
-        renderModelList(); syncPill();
-      }).withFailureHandler(() => { setConn('error','ขัดข้อง'); syncPill(); }).getAvailableModels();
-    }
-
-    function renderModelList() {
-      const el = document.getElementById('model-list');
-      if (!models.length) {
-        el.innerHTML = `<div style="padding:9px 12px;font-size:13px;color:var(--text-muted)">ไม่พบโมเดล — เปิด LM Studio แล้วกด "เชื่อมต่อโมเดลใหม่"</div>`;
-        return;
-      }
-      el.innerHTML = models.map(m => `
-        <button class="pop-item ${m===model?'sel':''}" onclick="setModel('${esc(m)}')">
-          <span class="pi-ic"><i class="fa-solid fa-microchip"></i></span>
-          <span class="pi-tx"><span class="pi-t">${esc(shortName(m))}</span>
-            <span class="pi-d">${esc(m)}</span></span>
-          <span class="pi-ck"><i class="fa-solid fa-check"></i></span>
-        </button>`).join('');
-    }
-
-    function setModel(m) { model = m; renderModelList(); syncPill(); closePops(); }
-
-    // แก้: setDeep ให้ล้าง interpreterMode ด้วย
-    function setDeep(v) {
-      deepMode = v; interpreterMode = false;
-      syncPill(); closePops();
-      const s = cur(); if (s) { s.deepThinking = v; s.interpreterMode = false; }
-      if (curId) {
-        google.script.run.withFailureHandler(()=>{}).updateSessionMode(curId, v);
-        google.script.run.withFailureHandler(()=>{}).updateSessionInterpreterMode(curId, false);
       }
     }
+  } catch (e) {}
 
-    // เพิ่ม: setInterpreter ฟังก์ชันใหม่
-    function setInterpreter(v) {
-      interpreterMode = v; deepMode = false;
-      syncPill(); closePops();
-      const s = cur(); if (s) { s.interpreterMode = v; s.deepThinking = false; }
-      if (curId) {
-        google.script.run.withFailureHandler(()=>{}).updateSessionInterpreterMode(curId, v);
-        google.script.run.withFailureHandler(()=>{}).updateSessionMode(curId, false);
+  if (models.length === 0) models.push("default-model");
+  return { success: true, models: models };
+}
+
+// ====================================================================
+// 🧠 SYSTEM PROMPT & LANGUAGE DETECTION
+// ====================================================================
+
+function baseIdentity_() {
+  const now = new Date();
+  const thaiDate = now.toLocaleDateString('th-TH', {
+    weekday:'long', year:'numeric', month:'long', day:'numeric', timeZone:'Asia/Bangkok' });
+  const thaiTime = now.toLocaleTimeString('th-TH', {
+    hour:'2-digit', minute:'2-digit', hour12:false, timeZone:'Asia/Bangkok' });
+
+  return "คุณคือ Ceres AI ผู้ช่วยส่วนตัวที่ฉลาด รอบคอบ และจริงใจ " +
+         "ตอบอย่างเป็นธรรมชาติ กระชับ ตรงประเด็น ไม่เยิ่นเย้อ ลงท้ายสุภาพด้วย ค่ะ/คะ\n" +
+         "เวลาปัจจุบัน: " + thaiDate + " " + thaiTime + " น. (เขตเวลาไทย)\n" +
+         "ตอบเป็นภาษาไทยเสมอ ยกเว้นผู้ใช้ขอภาษาอื่น หรือเป็นโค้ด/ศัพท์เทคนิค\n" +
+         "ห้ามแต่งข้อมูลที่ไม่รู้จริง ถ้าไม่แน่ใจให้บอกตรงๆ";
+}
+
+function buildSystemPrompt_(userMemory, groundingMode) {
+  let prompt = baseIdentity_();
+
+  prompt +=
+    "\n\n【รูปแบบการตอบ】\n" +
+    "ทุกคำตอบต้องขึ้นต้นด้วยการคิดในแท็ก <think> แล้วปิด </think> ก่อนเขียนคำตอบจริงเสมอ\n\n" +
+    "ตัวอย่างที่ 1:\n" +
+    "ผู้ใช้: สวัสดี\n" +
+    "คุณ: <think>ทักทายทั่วไป ตอบสั้นๆ เป็นกันเอง</think>\n" +
+    "สวัสดีค่ะ! วันนี้ให้ Ceres ช่วยอะไรดีคะ\n\n" +
+    "ตัวอย่างที่ 2:\n" +
+    "ผู้ใช้: ช่วยคำนวณ 15% ของ 2400 ให้หน่อย\n" +
+    "คุณ: <think>2400 × 0.15 = 360 ตรวจซ้ำ: 2400 ÷ 100 = 24, 24 × 15 = 360 ถูกต้อง</think>\n" +
+    "15% ของ 2,400 เท่ากับ **360** ค่ะ\n\n" +
+    "คิดใน <think> ให้สั้น ไม่เกิน 4 บรรทัด และต้องปิดแท็ก </think> ทุกครั้ง";
+
+  if (groundingMode === 'multi') {
+    prompt += "\n\n【ข้อมูลจากหลายแหล่ง】\n" +
+      "• อ่านทุกแหล่ง เรียบเรียงเป็นคำตอบเดียวด้วยภาษาของคุณเอง ห้ามคัดลอกทั้งดุ้น\n" +
+      "• ถ้าทุกแหล่งตรงกัน ตอบอย่างมั่นใจได้เลย\n" +
+      "• ถ้าแหล่งขัดแย้งกัน ต้องบอกตรงๆ ว่าแหล่งไหนว่าอย่างไร\n" +
+      "• ห้ามเติมตัวเลขหรือข้อเท็จจริงที่ไม่มีในข้อมูลที่ให้มา\n" +
+      "• ปิดท้ายด้วยการอ้างแหล่งสั้นๆ";
+  } else if (groundingMode === 'single') {
+    prompt += "\n\n【ข้อมูลอ้างอิง】\n" +
+      "ยึดข้อมูลที่แนบมาเป็นหลัก เรียบเรียงใหม่ด้วยภาษาของคุณเอง " +
+      "ถ้าข้อมูลไม่ครอบคลุมให้บอกว่าที่พบมีเท่านี้ ห้ามเติมเอง ปิดท้ายด้วยการอ้างแหล่ง";
+  }
+
+  if (userMemory) prompt += "\n\n【ข้อมูลผู้ใช้ที่จำไว้】\n" + userMemory;
+  return prompt;
+}
+
+// เพิ่ม: buildInterpreterSystemPrompt_ สำหรับโหมดล่าม
+function buildInterpreterSystemPrompt_() {
+  return "# บทบาท\n" +
+    "คุณคือล่ามแปลภาษาไทย-จีนไต้หวัน (Professional Interpreter) มืออาชีพ " +
+    "เชี่ยวชาญการแปลภาษาระดับสนทนาและภาษาเขียนในชีวิตประจำวัน โดยเฉพาะบริบทงานก่อสร้างและการลางาน\n\n" +
+    "# หน้าที่\n" +
+    "ตรวจสอบว่าข้อความที่ผู้ใช้พิมพ์มาเป็นภาษาไทยหรือภาษาจีน แล้วแปลข้ามภาษาให้อัตโนมัติ:\n" +
+    "- ถ้าข้อความเป็นภาษาไทย → แปลเป็นภาษาจีนตัวเต็มแบบไต้หวัน (Traditional Chinese)\n" +
+    "- ถ้าข้อความเป็นภาษาจีน → แปลเป็นภาษาไทย\n\n" +
+    "# กฎการแปล\n" +
+    "1. แปลตามความหมายและเจตนา (Sense-for-sense) ไม่ใช่แปลคำต่อคำ\n" +
+    "2. ปรับโครงสร้างประโยคให้เป็นธรรมชาติตามหลักไวยากรณ์ของภาษาปลายทาง เหมือนเจ้าของภาษาพูดเอง\n" +
+    "3. เลือกใช้คำศัพท์ที่เหมาะกับบริบท (การลางาน การแพทย์ งานก่อสร้าง)\n" +
+    "4. ใช้ตัวอักษรจีนตัวเต็ม (繁體字) เท่านั้น ห้ามใช้ตัวย่อ (简体字)\n\n" +
+    "# รูปแบบผลลัพธ์\n" +
+    "ตอบเฉพาะข้อความที่แปลเสร็จแล้วเท่านั้น ห้ามอธิบายเหตุผล ห้ามใส่คำอ่าน/พินอิน " +
+    "ห้ามมีข้อความอื่นปน ห้ามใช้แท็ก <think>";
+}
+
+// เพิ่ม: ฟังก์ชันตรวจสอบภาษา auto-detect
+function detectLanguage_(text) {
+  if (!text) return null;
+  const t = text.trim();
+  
+  // เช็คอักษรไทย
+  const thaiPattern = /[\u0E00-\u0E7F]/g;
+  const thaiMatches = t.match(thaiPattern) || [];
+  const thaiRatio = thaiMatches.length / t.length;
+  
+  // เช็คอักษรจีน (CJK)
+  const chinesePattern = /[\u4E00-\u9FFF\u3040-\u309F]/g;
+  const chineseMatches = t.match(chinesePattern) || [];
+  const chineseRatio = chineseMatches.length / t.length;
+  
+  if (thaiRatio > 0.2) return 'thai';
+  if (chineseRatio > 0.2) return 'chinese';
+  
+  return null;
+}
+
+function splitThinking_(rawReply) {
+  let thinkingText = "", replyText = rawReply || "";
+  const m = replyText.match(/<think>([\s\S]*?)<\/think>/i);
+  if (m) {
+    thinkingText = m[1].trim();
+    replyText = replyText.replace(/<think>([\s\S]*?)<\/think>/i, "").trim();
+  } else {
+    const open = replyText.match(/<think>([\s\S]*)$/i);
+    if (open) {
+      thinkingText = open[1].trim();
+      replyText = replyText.replace(/<think>([\s\S]*)$/i, "").trim();
+      if (!replyText) replyText = "ขอโทษค่ะ Ceres คิดไม่จบในรอบนี้ ลองถามใหม่อีกครั้งนะคะ";
+    }
+  }
+  replyText = replyText.replace(/<\/?think>/gi, "").trim();
+  return { replyText: replyText, thinkingText: thinkingText };
+}
+
+function cleanConversationForLLM_(messages) {
+  if (!messages || messages.length === 0) return [];
+  const sys = [], rest = [];
+  messages.forEach(m => { if (m.role === 'system') sys.push(m.content); else rest.push(m); });
+
+  const alt = [];
+  rest.forEach(m => {
+    if (alt.length === 0) alt.push({ role:m.role, content:m.content });
+    else {
+      const last = alt[alt.length - 1];
+      if (last.role === m.role) last.content = (last.content + "\n" + m.content).trim();
+      else alt.push({ role:m.role, content:m.content });
+    }
+  });
+  while (alt.length > 0 && alt[0].role !== 'user') alt.shift();
+
+  const out = [];
+  if (sys.length > 0) out.push({ role:'system', content: sys.join("\n\n") });
+  return out.concat(alt);
+}
+
+function callLLM_(messages, selectedModel, options) {
+  options = options || {};
+  const props = PropertiesService.getScriptProperties();
+  const geminiKey = props.getProperty("GEMINI_API_KEY");
+  const groqKey = props.getProperty("GROQ_API_KEY");
+  const openRouterKey = props.getProperty("OPENROUTER_API_KEY");
+
+  const maxTok = options.max_tokens !== undefined ? options.max_tokens : 1500;
+  const temp = options.temperature !== undefined ? options.temperature : 0.7;
+  const start = Date.now();
+  let rawReply = "", usage = { prompt_tokens:0, completion_tokens:0, total_tokens:0 };
+
+  if (geminiKey) {
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + geminiKey;
+    const contents = messages.map(m => m.role === "system" ? null :
+      ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })).filter(c => c);
+    const sysMsg = messages.find(m => m.role === "system");
+    const payload = { contents, generationConfig: { temperature: temp, maxOutputTokens: maxTok } };
+    if (sysMsg) payload.systemInstruction = { parts: [{ text: sysMsg.content }] };
+
+    const r = UrlFetchApp.fetch(url, { method:"post", contentType:"application/json",
+      payload: JSON.stringify(payload), muteHttpExceptions:true });
+    const code = r.getResponseCode(), text = r.getContentText();
+    if (code < 200 || code >= 300) throw new Error("Gemini API Error (" + code + "): " + text);
+    const j = JSON.parse(text);
+    rawReply = j.candidates && j.candidates[0] && j.candidates[0].content &&
+               j.candidates[0].content.parts[0] && j.candidates[0].content.parts[0].text || "";
+    usage = j.usageMetadata ? { prompt_tokens:j.usageMetadata.promptTokenCount,
+      completion_tokens:j.usageMetadata.candidatesTokenCount,
+      total_tokens:j.usageMetadata.totalTokenCount } : usage;
+
+  } else if (groqKey) {
+    const model = selectedModel && !selectedModel.includes("/") ? selectedModel : "llama3-8b-8192";
+    const r = UrlFetchApp.fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method:"post", headers:{ "Authorization":"Bearer " + groqKey, "Content-Type":"application/json" },
+      payload: JSON.stringify({ model, messages, temperature:temp, max_tokens:maxTok }),
+      muteHttpExceptions:true });
+    const code = r.getResponseCode(), text = r.getContentText();
+    if (code < 200 || code >= 300) throw new Error("Groq API Error (" + code + "): " + text);
+    const d = JSON.parse(text);
+    rawReply = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content || "";
+    usage = d.usage || usage;
+
+  } else if (openRouterKey) {
+    const model = selectedModel && selectedModel.includes("/") ? selectedModel : "google/gemini-2.5-flash";
+    const r = UrlFetchApp.fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method:"post", headers:{ "Authorization":"Bearer " + openRouterKey, "Content-Type":"application/json",
+        "HTTP-Referer":"https://ceres.ai", "X-Title":"Ceres AI" },
+      payload: JSON.stringify({ model, messages, temperature:temp, max_tokens:maxTok }),
+      muteHttpExceptions:true });
+    const code = r.getResponseCode(), text = r.getContentText();
+    if (code < 200 || code >= 300) throw new Error("OpenRouter API Error (" + code + "): " + text);
+    const d = JSON.parse(text);
+    rawReply = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content || "";
+    usage = d.usage || usage;
+
+  } else {
+    const payload = {
+      model: selectedModel || "default", messages: messages, temperature: temp,
+      max_tokens: Math.max(maxTok, 2048),
+      stop: ["\nผู้ใช้:", "\nUser:", "<|im_end|>", "<end_of_turn>"]
+    };
+    if (options.repeatPenalty !== false) {
+      payload.repeat_penalty = 1.1;
+      payload.frequency_penalty = 0.3;
+    }
+    const r = UrlFetchApp.fetch(getNgrokUrl_() + "/v1/chat/completions", {
+      method:"post", headers:{ "Content-Type":"application/json", "ngrok-skip-browser-warning":"true" },
+      payload: JSON.stringify(payload), muteHttpExceptions:true });
+    const code = r.getResponseCode(), text = r.getContentText();
+    if (code < 200 || code >= 300) throw new Error("LM Studio Error (" + code + "): " + text);
+    const d = JSON.parse(text);
+    rawReply = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content || "";
+    usage = d.usage || usage;
+  }
+
+  return { rawReply: rawReply, latency: (Date.now() - start) + "ms", usage: usage };
+}
+
+// ====================================================================
+// 🧠 DEEP THINKING MODE (เหมือนเดิม)
+// ====================================================================
+
+function deepThinkAnalyze(sessionId, userMessage, selectedModel, toolResult) {
+  assertSessionOwnership_(sessionId);
+  try {
+    const ctx = getConversationContext_(sessionId);
+
+    let groundingBlock = "";
+    if (toolResult && toolResult.success) {
+      groundingBlock = "\n\nข้อมูลอ้างอิงที่ระบบค้นมาให้:\n" +
+        JSON.stringify(toolResult.summary, null, 1).substring(0, 2500);
+    }
+
+    const sys =
+      baseIdentity_() + "\n\n" +
+      "ตอนนี้คุณอยู่ในขั้น 'ทำความเข้าใจโจทย์' ยังไม่ต้องตอบคำถามผู้ใช้\n" +
+      "หน้าที่ของคุณคือตอบคำถาม 4 ข้อนี้เกี่ยวกับโจทย์ ตอบสั้นๆ ข้อละ 1-2 บรรทัด:\n\n" +
+      "1. ผู้ใช้ต้องการอะไรจริงๆ (เจตนาที่แท้จริง ไม่ใช่แค่คำที่พิมพ์มา)\n" +
+      "2. ต้องรู้อะไรบ้างถึงจะตอบได้ดี (ข้อมูล เงื่อนไข หรือบริบทที่จำเป็น)\n" +
+      "3. มีอะไรที่ยังไม่ชัดหรือต้องระวังไหม (ความกำกวม ข้อจำกัด กับดัก)\n" +
+      "4. คำตอบที่ดีควรมีโครงสร้างอย่างไร (จะพูดถึงอะไรบ้าง เรียงลำดับไหน)\n\n" +
+      "ตอบเป็นภาษาไทย รูปแบบ:\n" +
+      "1. ...\n2. ...\n3. ...\n4. ...\n\n" +
+      "ห้ามเขียนคำตอบของคำถามผู้ใช้ในขั้นนี้เด็ดขาด ห้ามใช้แท็ก <think>";
+
+    const msgs = cleanConversationForLLM_([
+      { role: "system", content: sys },
+      ...ctx.history,
+      { role: "user", content: "โจทย์จากผู้ใช้: " + userMessage + groundingBlock }
+    ]);
+
+    const r = callLLM_(msgs, selectedModel, { temperature: 0.3, max_tokens: 500 });
+    const plan = splitThinking_(r.rawReply).replyText.trim();
+
+    return {
+      success: true,
+      plan: plan || "(วิเคราะห์ไม่สำเร็จ ใช้การตอบแบบปกติแทน)",
+      carry: { userMemory: ctx.userMemory, history: ctx.history },
+      latency: r.latency
+    };
+  } catch (e) {
+    return { success: false, error: e.message || e.toString() };
+  }
+}
+
+function deepThinkDraft(sessionId, userMessage, plan, carry, selectedModel, toolResult) {
+  assertSessionOwnership_(sessionId);
+  try {
+    const userMemory = (carry && carry.userMemory) || "";
+    const history = (carry && carry.history) || [];
+
+    const isMulti = toolResult && toolResult.multiSource && (toolResult.sourceCount || 0) > 1;
+    const groundingMode = (toolResult && toolResult.success) ? (isMulti ? 'multi' : 'single') : null;
+
+    let sys = buildSystemPrompt_(userMemory, groundingMode);
+    sys += "\n\n【แผนที่วิเคราะห์ไว้แล้ว】\n" + plan + "\n\n" +
+           "ตอนนี้ลงมือเขียนคำตอบจริงตามแผนข้างบน ครอบคลุมทุกข้อที่วางไว้ " +
+           "เขียนให้อ่านง่าย เป็นธรรมชาติ ไม่ต้องอ้างถึงแผนหรือบอกว่ากำลังทำตามแผน";
+
+    const msgs = [{ role: "system", content: sys }, ...history];
+
+    if (toolResult && toolResult.success) {
+      msgs.push({ role: "system", content:
+        "【ข้อมูลอ้างอิงจาก " + toolResult.source + "】\n" +
+        JSON.stringify(toolResult.summary, null, 1) +
+        (isMulti ? "\n\nสถานะตรวจสอบข้ามแหล่ง: " + (toolResult.verifyLabel || '-') : "") });
+    }
+
+    msgs.push({ role: "user", content: userMessage });
+
+    const r = callLLM_(cleanConversationForLLM_(msgs), selectedModel,
+                       { temperature: 0.6, max_tokens: 1800 });
+    const split = splitThinking_(r.rawReply);
+
+    return { success: true, draft: split.replyText, draftThinking: split.thinkingText, latency: r.latency };
+  } catch (e) {
+    return { success: false, error: e.message || e.toString() };
+  }
+}
+
+function deepThinkRefine(sessionId, userMessage, plan, draft, carry, selectedModel) {
+  assertSessionOwnership_(sessionId);
+  const email = getUserEmail_();
+  try {
+    const sys =
+      baseIdentity_() + "\n\n" +
+      "ตอนนี้คุณอยู่ในขั้น 'ตรวจทาน' คุณได้ร่างคำตอบไว้แล้ว หน้าที่คือตรวจหาปัญหาแล้วเขียนฉบับสมบูรณ์\n\n" +
+      "ตรวจตามนี้:\n" +
+      "• ตอบตรงคำถามและครบตามแผนที่วางไว้ไหม\n" +
+      "• มีข้อผิดพลาด ตัวเลขผิด หรือข้อมูลที่แต่งขึ้นเองไหม\n" +
+      "• มีส่วนที่เยิ่นเย้อ ซ้ำซ้อน หรืออธิบายไม่ชัดไหม\n\n" +
+      "จากนั้นเขียนคำตอบฉบับสมบูรณ์ออกมาเลย ห้ามอธิบายว่าแก้อะไรบ้าง " +
+      "ห้ามเขียนคำว่า 'ฉบับปรับปรุง' หรือพูดถึงกระบวนการตรวจทาน " +
+      "ให้เขียนเหมือนเป็นคำตอบแรกที่ผู้ใช้จะเห็น ห้ามใช้แท็ก <think>";
+
+    const r = callLLM_([
+      { role: "system", content: sys },
+      { role: "user", content:
+        "คำถามเดิม: " + userMessage + "\n\n" +
+        "แผนที่วางไว้:\n" + plan + "\n\n" +
+        "ร่างคำตอบ:\n" + draft + "\n\n" +
+        "เขียนคำตอบฉบับสมบูรณ์:" }
+    ], selectedModel, { temperature: 0.4, max_tokens: 1800 });
+
+    const split = splitThinking_(r.rawReply);
+    let finalText = split.replyText;
+
+    if (!finalText || finalText.length < Math.min(60, draft.length * 0.35)) {
+      finalText = draft;
+    }
+
+    markMemoryDirty_(sessionId, email);
+
+    return { success: true, reply: finalText, latency: r.latency };
+  } catch (e) {
+    return { success: false, error: e.message || e.toString() };
+  }
+}
+
+// ====================================================================
+// ⚡ INTERPRETER MODE (เพิ่มใหม่)
+// ====================================================================
+
+// เพิ่ม: sendMessageInterpreter ฟังก์ชันใหม่ สำหรับโหมดล่าม
+function sendMessageInterpreter(sessionId, userMessage, selectedModel) {
+  assertSessionOwnership_(sessionId);
+  try {
+    const ctx = getConversationContext_(sessionId);
+    const email = getUserEmail_();
+    
+    // ตรวจสอบภาษาที่พิมพ์มา
+    const detectedLang = detectLanguage_(userMessage);
+    
+    // few-shot examples สำหรับการแปล
+    const fewShot = [
+      { role:"user", content:"ลาป่วยเนื่องจากเจ็บที่มือและแขน" },
+      { role:"assistant", content:"因手部和胳膊疼痛，特此請病假。" },
+      { role:"user", content:"明天因私事去銀行辦理業務，想請半天假" },
+      { role:"assistant", content:"พรุ่งนี้ขอลาครึ่งวันไปทำธุระที่ธนาคารครับ" }
+    ];
+    
+    const msgs = cleanConversationForLLM_([
+      { role:"system", content: buildInterpreterSystemPrompt_() },
+      ...fewShot, ...ctx.history,
+      { role:"user", content:userMessage }
+    ]);
+
+    const r = callLLM_(msgs, selectedModel, { temperature:0.3, max_tokens:800, repeatPenalty:false });
+    let translated = (r.rawReply || "").replace(/<\/?think>[\s\S]*?<\/think>/gi,'')
+                                        .replace(/<\/?think>/gi,'').trim();
+
+    // บันทึกข้อความต้นทางและผลลัพธ์การแปล
+    markMemoryDirty_(sessionId, email);
+
+    return { success:true, reply: translated, thinking:"", latency:r.latency, usage:r.usage };
+  } catch (e) {
+    return { success:false, reply:e.message || e.toString(), thinking:"", latency:"0ms" };
+  }
+}
+
+// ====================================================================
+// 🔧 TOOL ROUTER & DISPATCHER (เหมือนเดิม)
+// ====================================================================
+
+function heuristicToolMatch_(text) {
+  const t = (text || "").trim(), lower = t.toLowerCase();
+
+  if (/(?:อากาศ|ฝนตก|อุณหภูมิ|weather|forecast|ร้อนไหม|หนาวไหม|ฝนจะตก)/i.test(t)) {
+    let loc = "";
+    const m = t.match(/(?:ที่|ใน|จังหวัด|at|in)\s*([ก-๙a-zA-Z\s]{2,30})/);
+    if (m) loc = m[1].trim().split(/\s+(?:วันนี้|ตอนนี้|พรุ่งนี้|เป็นไง|ยังไง|ไหม)/)[0].trim();
+    return { tool:'weather', params:{ location: loc || 'Bangkok' } };
+  }
+  if (/(?:bitcoin|btc|ethereum|eth|dogecoin|คริปโต|เหรียญ.*ราคา|ราคา.*(?:bitcoin|btc|eth))/i.test(t)) {
+    let coin = 'bitcoin';
+    if (/eth|ethereum/i.test(t)) coin = 'ethereum';
+    else if (/doge/i.test(t)) coin = 'dogecoin';
+    else if (/bnb/i.test(t)) coin = 'binancecoin';
+    else if (/xrp|ripple/i.test(t)) coin = 'ripple';
+    else if (/sol|solana/i.test(t)) coin = 'solana';
+    return { tool:'crypto', params:{ coin: coin } };
+  }
+
+  if (/(?:หุ้น|stock|ราคาหุ้น|nasdaq)/i.test(t)) {
+    if (/(?:ข่าว|news|สถานการณ์|เป็นไง)/i.test(t)) {
+      return { tool:'news', params:{ query: t } };
+    }
+    const s = t.match(/\b([A-Za-z]{1,5})\b/);
+    const word = s ? s[1].toUpperCase() : '';
+    const ignoreWords = ['หุ้น', 'STOCK', 'NASDAQ', 'ราคา', 'ข่าว', 'ของ', 'ใน'];
+    const sym = (word && !ignoreWords.includes(word)) ? word : '';
+    return { tool:'stock', params:{ symbol: sym, query: t } };
+  }
+
+  if (/(?:อัตราแลกเปลี่ยน|แลกเงิน|ค่าเงิน|exchange rate|กี่บาท).*(?:ดอลลาร์|usd|เยน|jpy|ยูโร|eur|หยวน|cny|วอน|krw|twd)|(?:ดอลลาร์|usd|เยน|jpy|ยูโร|eur|หยวน|cny|twd).*(?:กี่บาท|เท่าไหร่|เรท)/i.test(t)) {
+    let from = 'USD';
+    if (/เยน|jpy/i.test(t)) from = 'JPY';
+    else if (/ยูโร|eur/i.test(t)) from = 'EUR';
+    else if (/หยวน|cny/i.test(t)) from = 'CNY';
+    else if (/วอน|krw/i.test(t)) from = 'KRW';
+    else if (/ไต้หวัน|twd/i.test(t)) from = 'TWD';
+    return { tool:'currency', params:{ from: from, to:'THB' } };
+  }
+  const url = t.match(/https?:\/\/[^\s]+/);
+  if (url) return { tool:'browse', params:{ url: url[0] } };
+
+  if (/(?:ข่าว|news|เกิดอะไรขึ้น|สถานการณ์ล่าสุด)/i.test(t)) {
+    return { tool:'news', params:{ query: t.replace(/(?:ข่าว|หา|ค้นหา|ขอ|เกี่ยวกับ)/g,'').trim() || 'ข่าววันนี้' } };
+  }
+  if (/hacker\s?news|ข่าวไอที|ข่าวเทค/i.test(lower)) return { tool:'hackernews', params:{} };
+
+  const ip = t.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/);
+  if (ip) return { tool:'ip_lookup', params:{ ip: ip[0] } };
+
+  if (/(?:คืออะไร|คือใคร|แปลว่าอะไร|หมายถึงอะไร|ประวัติ|ความเป็นมา|ใครเป็นคนคิด|ใครค้นพบ|เกิดขึ้นเมื่อไหร่|อธิบาย(?:เรื่อง|คำว่า)|what is|who is|history of)/i.test(t)) {
+    let q = t.replace(/(?:ช่วย|ขอ|อยากรู้|บอก|อธิบาย|หน่อย|ครับ|ค่ะ|คะ|ที|ให้ฟัง|ให้ที)/g,'')
+             .replace(/(?:คืออะไร|คือใคร|แปลว่าอะไร|หมายถึงอะไร|ประวัติ|ความเป็นมา|เกี่ยวกับ|เรื่อง|คำว่า)/g,' ')
+             .replace(/[?？]/g,'').replace(/\s+/g,' ').trim();
+    if (q.length >= 2) return { tool:'knowledge', params:{ query: q } };
+  }
+  return null;
+}
+
+function planToolUse(text, selectedModel) {
+  const quick = heuristicToolMatch_(text);
+  if (quick) return quick;
+
+  const t = (text || "").trim();
+  if (t.length < 10) return { tool:"none", params:{} };
+  if (/^(สวัสดี|หวัดดี|ขอบคุณ|ขอบใจ|โอเค|ok|okay|555|hello|hi|hey|thanks|บาย|ฝันดี|ดีครับ|ดีค่ะ)/i.test(t)) {
+    return { tool:"none", params:{} };
+  }
+
+  const sys =
+    "You are an intent classifier. Select the best tool and extract parameters.\n" +
+    "Tools:\n- knowledge: {\"query\": string}\n- weather: {\"location\": string}\n" +
+    "- crypto: {\"coin\": string}\n- currency: {\"from\": string, \"to\": string}\n" +
+    "- stock: {\"symbol\": string, \"query\": string}\n- news: {\"query\": string}\n- browse: {\"url\": string}\n" +
+    "- hackernews: {}\n- country: {\"name\": string}\n- ip_lookup: {\"ip\": string}\n- none: {}\n\n" +
+    "Respond with ONLY a JSON object:\n{\"tool\": \"knowledge\", \"params\": {\"query\": \"ซีรีส\"}}";
+
+  try {
+    const r = callLLM_([{ role:"system", content:sys }, { role:"user", content:text }],
+      selectedModel, { temperature:0.0, max_tokens:120, repeatPenalty:false });
+    const jm = r.rawReply.match(/\{[\s\S]*\}/);
+    if (!jm) return { tool:"none", params:{} };
+    const p = JSON.parse(jm[0]);
+    const valid = ['knowledge','weather','crypto','currency','stock','news','browse','wiki',
+                   'hackernews','country','ip_lookup','none'];
+    return { tool: valid.includes(p.tool) ? p.tool : "none", params: p.params || {} };
+  } catch (e) { return { tool:"none", params:{} }; }
+}
+
+// ====================================================================
+// KNOWLEDGE ENGINE & TOOLS (เหมือนเดิมทั้งหมด ไม่แก้ไข)
+// ====================================================================
+
+function fetchKnowledgeMultiSource_(query, usage) {
+  if (!query) throw new Error("ไม่ระบุคำค้นหา");
+  const quotaMap = loadQuotaMap_();
+
+  const t1 = parallelFetch_([
+    { key:'wikiTh', apiId:'wikipedia',
+      url:"https://th.wikipedia.org/w/api.php?action=query&list=search&srsearch=" +
+          encodeURIComponent(query) + "&srlimit=1&format=json&origin=*" },
+    { key:'wikiEn', apiId:'wikipedia',
+      url:"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=" +
+          encodeURIComponent(query) + "&srlimit=1&format=json&origin=*" },
+    { key:'ddg', apiId:'duckduckgo',
+      url:"https://api.duckduckgo.com/?q=" + encodeURIComponent(query) + "&format=json&no_html=1&skip_disambig=1" },
+    { key:'wikidata', apiId:'wikidata',
+      url:"https://www.wikidata.org/w/api.php?action=wbsearchentities&search=" +
+          encodeURIComponent(query) + "&language=th&uselang=th&limit=1&format=json&origin=*" }
+  ], usage);
+
+  const t1b = [];
+  const thTitle = (t1.wikiTh && t1.wikiTh.query && t1.wikiTh.query.search && t1.wikiTh.query.search[0])
+                  ? t1.wikiTh.query.search[0].title : null;
+  if (thTitle) t1b.push({ key:'thSum', apiId:'wikipedia',
+    url:"https://th.wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(thTitle) });
+
+  const enTitle = (t1.wikiEn && t1.wikiEn.query && t1.wikiEn.query.search && t1.wikiEn.query.search[0])
+                  ? t1.wikiEn.query.search[0].title : null;
+  if (enTitle) t1b.push({ key:'enSum', apiId:'wikipedia',
+    url:"https://en.wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(enTitle) });
+
+  if (/^[a-zA-Z-]{2,25}$/.test(query.trim())) {
+    t1b.push({ key:'dict', apiId:'dictionary',
+      url:"https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(query.trim()) });
+  }
+
+  const t1r = t1b.length > 0 ? parallelFetch_(t1b, usage) : {};
+  const sources = [];
+
+  if (t1r.thSum && t1r.thSum.extract) {
+    sources.push({ name:'Wikipedia (ไทย)', title:t1r.thSum.title,
+      content:t1r.thSum.extract.substring(0,1400),
+      url:(t1r.thSum.content_urls && t1r.thSum.content_urls.desktop && t1r.thSum.content_urls.desktop.page) || "" });
+  } else if (thTitle && t1.wikiTh.query.search[0].snippet) {
+    sources.push({ name:'Wikipedia (ไทย)', title:thTitle,
+      content:t1.wikiTh.query.search[0].snippet.replace(/<[^>]+>/g,''),
+      url:"https://th.wikipedia.org/wiki/" + encodeURIComponent(thTitle) });
+  }
+  if (t1r.enSum && t1r.enSum.extract) {
+    sources.push({ name:'Wikipedia (EN)', title:t1r.enSum.title,
+      content:t1r.enSum.extract.substring(0,1400),
+      url:(t1r.enSum.content_urls && t1r.enSum.content_urls.desktop && t1r.enSum.content_urls.desktop.page) || "" });
+  }
+  if (t1.ddg) {
+    const d = t1.ddg;
+    if (d.AbstractText && d.AbstractText.length > 20) {
+      sources.push({ name:'DuckDuckGo (' + (d.AbstractSource || 'Instant') + ')',
+        title:d.Heading || query, content:d.AbstractText.substring(0,1200), url:d.AbstractURL || "" });
+    } else if (d.RelatedTopics && d.RelatedTopics.length > 0) {
+      const tp = d.RelatedTopics.filter(x => x.Text).slice(0,3).map(x => x.Text);
+      if (tp.length > 0) sources.push({ name:'DuckDuckGo (หัวข้อเกี่ยวข้อง)',
+        title:query, content:tp.join(" | ").substring(0,900), url:"" });
+    }
+  }
+  if (t1.wikidata && t1.wikidata.search && t1.wikidata.search[0] && t1.wikidata.search[0].description) {
+    const wd = t1.wikidata.search[0];
+    sources.push({ name:'Wikidata', title:wd.label || query,
+      content:wd.description, url:"https://www.wikidata.org/wiki/" + wd.id });
+  }
+  if (t1r.dict && t1r.dict[0]) {
+    const e = t1r.dict[0];
+    const mn = (e.meanings || []).slice(0,2).map(m => {
+      const def = m.definitions && m.definitions[0] ? m.definitions[0].definition : "";
+      return m.partOfSpeech + ": " + def;
+    });
+    if (mn.length > 0) sources.push({ name:'Free Dictionary', title:e.word, content:mn.join(" | "), url:"" });
+  }
+
+  const pre = crossCheckTexts_(sources);
+  const needPremium = (sources.length < 2) || (pre.level === 'low');
+  let usedPremium = false;
+
+  if (needPremium) {
+    const reqs = [];
+    if (canUseApi_('tavily', quotaMap)) reqs.push({ key:'tavily', apiId:'tavily', method:'post',
+      url:"https://api.tavily.com/search", headers:{ "Content-Type":"application/json" },
+      payload:{ api_key:getApiKey_('tavily'), query:query, search_depth:"basic",
+                include_answer:true, max_results:3 } });
+    if (canUseApi_('brave', quotaMap)) reqs.push({ key:'brave', apiId:'brave',
+      url:"https://api.search.brave.com/res/v1/web/search?q=" + encodeURIComponent(query) + "&count=3",
+      headers:{ "Accept":"application/json", "X-Subscription-Token":getApiKey_('brave') } });
+    if (canUseApi_('wolfram', quotaMap)) reqs.push({ key:'wolfram', apiId:'wolfram',
+      url:"https://api.wolframalpha.com/v1/result?appid=" + encodeURIComponent(getApiKey_('wolfram')) +
+          "&i=" + encodeURIComponent(query) + "&units=metric" });
+    if (canUseApi_('exa', quotaMap)) reqs.push({ key:'exa', apiId:'exa', method:'post',
+      url:"https://api.exa.ai/search",
+      headers:{ "Content-Type":"application/json", "x-api-key":getApiKey_('exa') },
+      payload:{ query:query, numResults:3, contents:{ text:{ maxCharacters:600 } } } });
+
+    if (reqs.length > 0) {
+      const t2 = parallelFetch_(reqs, usage);
+      usedPremium = true;
+
+      if (t2.tavily) {
+        if (t2.tavily.answer) sources.push({ name:'Tavily (สรุปโดย AI)', title:query,
+          content:String(t2.tavily.answer).substring(0,1200), url:"" });
+        if (t2.tavily.results && t2.tavily.results.length > 0) {
+          const r0 = t2.tavily.results[0];
+          sources.push({ name:'Tavily (' + (r0.title || 'ผลค้นหา') + ')', title:r0.title || query,
+            content:String(r0.content || '').substring(0,900), url:r0.url || "" });
+        }
+      }
+      if (t2.brave && t2.brave.web && t2.brave.web.results && t2.brave.web.results.length > 0) {
+        const top = t2.brave.web.results.slice(0,2)
+          .map(r => (r.title || '') + ': ' + (r.description || '')).join(' | ');
+        sources.push({ name:'Brave Search', title:query,
+          content:top.replace(/<[^>]+>/g,'').substring(0,1100), url:t2.brave.web.results[0].url || "" });
+      }
+      if (t2.wolfram && typeof t2.wolfram === 'string' && t2.wolfram.length > 2 &&
+          !/^No short answer/i.test(t2.wolfram)) {
+        sources.push({ name:'Wolfram Alpha', title:query, content:t2.wolfram.substring(0,800), url:"" });
+      }
+      if (t2.exa && t2.exa.results && t2.exa.results.length > 0) {
+        const r0 = t2.exa.results[0];
+        sources.push({ name:'Exa (' + (r0.title || 'ผลค้นหา') + ')', title:r0.title || query,
+          content:String(r0.text || '').substring(0,900), url:r0.url || "" });
+      }
+    }
+  }
+
+  if (sources.length === 0) {
+    return { found:false, sources:[], crossCheck:{ level:'none', label:'ไม่พบข้อมูล', detail:'' } };
+  }
+
+  return {
+    found: true, sources: sources, sourceCount: sources.length,
+    sourceNames: sources.map(s => s.name).join(' + '),
+    usedPremium: usedPremium, crossCheck: crossCheckTexts_(sources)
+  };
+}
+
+// ---- ฟังก์ชันอื่นๆ ---- (fetchCryptoMulti_, fetchCurrencyMulti_, fetchWeatherMulti_, ฯลฯ เหมือนเดิม)
+// [ทั้งหมดนี้ยาวมาก จึงตัดออกเพื่อความกระชับ แต่จริงๆต้องรวมเข้าไปในไฟล์เดียวกัน]
+
+function fetchCryptoMulti_(coin, usage) {
+  const coinId = (coin || "bitcoin").toLowerCase();
+  const symMap = { bitcoin:'BTC', ethereum:'ETH', dogecoin:'DOGE', binancecoin:'BNB',
+                   ripple:'XRP', solana:'SOL', cardano:'ADA' };
+  const sym = symMap[coinId] || 'BTC';
+  const qm = loadQuotaMap_();
+
+  const reqs = [];
+  if (canUseApi_('coingecko', qm)) reqs.push({ key:'gecko', apiId:'coingecko',
+    url:"https://api.coingecko.com/api/v3/simple/price?ids=" + encodeURIComponent(coinId) +
+        "&vs_currencies=usd,thb&include_24hr_change=true" });
+  reqs.push({ key:'binance', apiId:'binance',
+    url:"https://api.binance.com/api/v3/ticker/price?symbol=" + sym + "USDT" });
+  reqs.push({ key:'coinbase', apiId:'coinbase',
+    url:"https://api.coinbase.com/v2/prices/" + sym + "-USD/spot" });
+
+  const r = parallelFetch_(reqs, usage);
+  const prices = [], detail = {};
+
+  if (r.gecko && r.gecko[coinId] && r.gecko[coinId].usd) {
+    prices.push({ source:'CoinGecko', value:Number(r.gecko[coinId].usd) });
+    detail.CoinGecko_USD = r.gecko[coinId].usd;
+    if (r.gecko[coinId].thb) detail.CoinGecko_THB = r.gecko[coinId].thb;
+    if (r.gecko[coinId].usd_24h_change) detail.เปลี่ยนแปลง24ชม = r.gecko[coinId].usd_24h_change.toFixed(2) + "%";
+  }
+  if (r.binance && r.binance.price) {
+    prices.push({ source:'Binance', value:Number(r.binance.price) });
+    detail.Binance_USDT = Number(r.binance.price);
+  }
+  if (r.coinbase && r.coinbase.data && r.coinbase.data.amount) {
+    prices.push({ source:'Coinbase', value:Number(r.coinbase.data.amount) });
+    detail.Coinbase_USD = Number(r.coinbase.data.amount);
+  }
+  if (prices.length === 0) throw new Error("ไม่พบข้อมูลราคาเหรียญ " + coinId);
+
+  const v = crossCheckNumbers_(prices, 1.5, ' USD');
+  return { data:{ เหรียญ:coinId.toUpperCase(), ราคาจากแต่ละแหล่ง:detail,
+                  ราคาเฉลี่ยที่ยืนยันแล้ว:v.consensus + " USD" },
+           sourceNames: prices.map(p => p.source).join(' + '), verify:v };
+}
+
+function fetchCurrencyMulti_(from, to, usage) {
+  const f = (from || "USD").toUpperCase(), t = (to || "THB").toUpperCase();
+  const r = parallelFetch_([
+    { key:'frank', apiId:'frankfurter', url:"https://api.frankfurter.app/latest?from=" + f + "&to=" + t },
+    { key:'erapi', apiId:'erapi', url:"https://open.er-api.com/v6/latest/" + f }
+  ], usage);
+
+  const rates = [], detail = {};
+  if (r.frank && r.frank.rates && r.frank.rates[t]) {
+    rates.push({ source:'Frankfurter (ECB)', value:Number(r.frank.rates[t]) });
+    detail['Frankfurter_ECB'] = r.frank.rates[t];
+    detail['วันที่อ้างอิง'] = r.frank.date;
+  }
+  if (r.erapi && r.erapi.rates && r.erapi.rates[t]) {
+    rates.push({ source:'ExchangeRate-API', value:Number(r.erapi.rates[t]) });
+    detail['ExchangeRate_API'] = r.erapi.rates[t];
+  }
+  if (rates.length === 0) throw new Error("ไม่พบอัตราแลกเปลี่ยน " + f + " → " + t);
+
+  const v = crossCheckNumbers_(rates, 1.0, '');
+  return { data:{ จาก:f, เป็น:t, อัตราจากแต่ละแหล่ง:detail, อัตราเฉลี่ยที่ยืนยันแล้ว:v.consensus },
+           sourceNames: rates.map(x => x.source).join(' + '), verify:v };
+}
+
+function fetchWeatherMulti_(location, usage) {
+  const loc = location || "Bangkok";
+  const qm = loadQuotaMap_();
+
+  const geo = parallelFetch_([{ key:'geo', apiId:'openmeteo',
+    url:"https://geocoding-api.open-meteo.com/v1/search?name=" + encodeURIComponent(loc) + "&count=1&language=th" }], usage);
+  if (!geo.geo || !geo.geo.results || geo.geo.results.length === 0) throw new Error("ไม่พบพิกัดของ " + loc);
+  const g = geo.geo.results[0];
+
+  const reqs = [{ key:'meteo', apiId:'openmeteo',
+    url:"https://api.open-meteo.com/v1/forecast?latitude=" + g.latitude + "&longitude=" + g.longitude +
+        "&current_weather=true&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
+        "&timezone=Asia%2FBangkok&forecast_days=2" }];
+  if (canUseApi_('wttr', qm)) reqs.push({ key:'wttr', apiId:'wttr',
+    url:"https://wttr.in/" + encodeURIComponent(loc) + "?format=j1" });
+  if (canUseApi_('openweather', qm)) reqs.push({ key:'owm', apiId:'openweather',
+    url:"https://api.openweathermap.org/data/2.5/weather?lat=" + g.latitude + "&lon=" + g.longitude +
+        "&units=metric&lang=th&appid=" + encodeURIComponent(getApiKey_('openweather')) });
+
+  const r = parallelFetch_(reqs, usage);
+  const temps = [], detail = { สถานที่: g.name + ", " + (g.country || "") };
+
+  if (r.meteo && r.meteo.current_weather) {
+    const t = Number(r.meteo.current_weather.temperature);
+    temps.push({ source:'Open-Meteo', value:t });
+    detail['OpenMeteo_อุณหภูมิ'] = t + "°C";
+    detail['ความเร็วลม'] = r.meteo.current_weather.windspeed + " km/h";
+    if (r.meteo.daily) {
+      detail['วันนี้สูงสุด'] = r.meteo.daily.temperature_2m_max[0] + "°C";
+      detail['วันนี้ต่ำสุด'] = r.meteo.daily.temperature_2m_min[0] + "°C";
+      detail['โอกาสฝนตกวันนี้'] = r.meteo.daily.precipitation_probability_max[0] + "%";
+    }
+  }
+  if (r.wttr && r.wttr.current_condition && r.wttr.current_condition[0]) {
+    const t = Number(r.wttr.current_condition[0].temp_C);
+    if (!isNaN(t)) {
+      temps.push({ source:'wttr.in', value:t });
+      detail['wttr_อุณหภูมิ'] = t + "°C";
+      detail['ความชื้น'] = r.wttr.current_condition[0].humidity + "%";
+    }
+  }
+  if (r.owm && r.owm.main && typeof r.owm.main.temp === 'number') {
+    temps.push({ source:'OpenWeatherMap', value:Number(r.owm.main.temp) });
+    detail['OpenWeather_อุณหภูมิ'] = r.owm.main.temp + "°C";
+    detail['รู้สึกเหมือน'] = r.owm.main.feels_like + "°C";
+    if (r.owm.weather && r.owm.weather[0]) detail['สภาพอากาศ'] = r.owm.weather[0].description;
+  }
+  if (temps.length === 0) throw new Error("ไม่พบข้อมูลสภาพอากาศ");
+
+  return { data:detail, sourceNames: temps.map(t => t.source).join(' + '),
+           verify: crossCheckNumbers_(temps, 12, '°C') };
+}
+
+function fetchNewsMulti_(query, usage) {
+  const q = query || "ข่าววันนี้";
+  const qm = loadQuotaMap_();
+  const reqs = [{ key:'grss', apiId:'googlenews',
+    url:"https://news.google.com/rss/search?q=" + encodeURIComponent(q) + "&hl=th&gl=TH&ceid=TH:th" }];
+
+  if (canUseApi_('gnews', qm)) reqs.push({ key:'gnews', apiId:'gnews',
+    url:"https://gnews.io/api/v4/search?q=" + encodeURIComponent(q) + "&lang=th&max=5&apikey=" +
+        encodeURIComponent(getApiKey_('gnews')) });
+  if (canUseApi_('guardian', qm)) reqs.push({ key:'guardian', apiId:'guardian',
+    url:"https://content.guardianapis.com/search?q=" + encodeURIComponent(q) +
+        "&page-size=5&show-fields=trailText&api-key=" + encodeURIComponent(getApiKey_('guardian')) });
+
+  const r = parallelFetch_(reqs, usage);
+  const result = { คำค้น:q }, used = [];
+
+  if (r.grss && typeof r.grss === 'string') {
+    const items = [];
+    const mt = r.grss.match(/<title>(.*?)<\/title>/g);
+    if (mt) mt.slice(1,6).forEach(m => items.push(m.replace(/<\/?title>/g,'').replace(/<!\[CDATA\[|\]\]>/g,'')));
+    if (items.length) { result['GoogleNews_พาดหัว'] = items; used.push('Google News RSS'); }
+  }
+  if (r.gnews && r.gnews.articles) {
+    result['GNews_ข่าว'] = r.gnews.articles.slice(0,4).map(a => ({
+      หัวข้อ:a.title, สรุป:a.description, แหล่ง:a.source && a.source.name, ลิงก์:a.url }));
+    used.push('GNews');
+  }
+  if (r.guardian && r.guardian.response && r.guardian.response.results) {
+    result['Guardian_ข่าว'] = r.guardian.response.results.slice(0,4).map(a => ({
+      หัวข้อ:a.webTitle, สรุป:a.fields && a.fields.trailText, ลิงก์:a.webUrl }));
+    used.push('The Guardian');
+  }
+  if (used.length === 0) throw new Error("ไม่พบข่าว");
+  return { data:result, sourceNames:used.join(' + '), sourceCount:used.length };
+}
+
+function fetchStockMulti_(symbol, queryText, usage) {
+  const qm = loadQuotaMap_();
+  const sym = (symbol || "").trim().toUpperCase();
+  const q = (queryText || sym || "หุ้น").trim();
+  const newsQuery = q.includes("หุ้น") ? q : q + " หุ้น";
+
+  const reqs = [
+    { key:'grss', apiId:'googlenews',
+      url:"https://news.google.com/rss/search?q=" + encodeURIComponent(newsQuery) + "&hl=th&gl=TH&ceid=TH:th" }
+  ];
+
+  if (sym && canUseApi_('twelvedata', qm)) {
+    reqs.push({ key:'td', apiId:'twelvedata',
+      url:"https://api.twelvedata.com/quote?symbol=" + encodeURIComponent(sym) +
+          "&apikey=" + encodeURIComponent(getApiKey_('twelvedata')) });
+  }
+
+  const r = parallelFetch_(reqs, usage);
+  const resultData = {};
+  const usedSources = [];
+
+  if (r.td && r.td.close && r.td.status !== 'error') {
+    resultData['ข้อมูลราคา_TwelveData'] = {
+      สัญลักษณ์: r.td.symbol, ชื่อบริษัท: r.td.name, ราคาปิดล่าสุด: r.td.close,
+      เปิด: r.td.open, สูงสุด: r.td.high, ต่ำสุด: r.td.low,
+      เปลี่ยนแปลง: r.td.change, เปอร์เซ็นต์: r.td.percent_change + "%",
+      ตลาด: r.td.exchange, วันที่: r.td.datetime
+    };
+    usedSources.push("Twelve Data");
+  }
+
+  if (r.grss && typeof r.grss === 'string') {
+    const items = [];
+    const mt = r.grss.match(/<title>(.*?)<\/title>/g);
+    if (mt) {
+      mt.slice(1, 6).forEach(m => items.push(m.replace(/<\/?title>/g,'').replace(/<!\[CDATA\[|\]\]>/g,'')));
+    }
+    if (items.length > 0) {
+      resultData['ข่าวและข้อมูลล่าสุดจาก_GoogleNews'] = items;
+      usedSources.push("Google News RSS");
+    }
+  }
+
+  if (usedSources.length === 0) {
+    throw new Error("ไม่พบข้อมูลหุ้นหรือข่าวของ " + q);
+  }
+
+  return {
+    data: resultData,
+    sourceNames: usedSources.join(' + '),
+    sourceCount: usedSources.length
+  };
+}
+
+function fetchUrlContent_(url) {
+  if (!url) throw new Error("ไม่ระบุ URL");
+  const html = UrlFetchApp.fetch(url, { muteHttpExceptions:true,
+    headers:{ "User-Agent":"Mozilla/5.0" } }).getContentText();
+  const tm = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const clean = html.replace(/<script\b[^<]*>([\s\S]*?)<\/script>/gi,'')
+                    .replace(/<style\b[^<]*>([\s\S]*?)<\/style>/gi,'')
+                    .replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+  return { url:url, title: tm ? tm[1].trim() : "Web Content", เนื้อหา: clean.substring(0,1500) };
+}
+
+function fetchHackerNews_(usage) {
+  const ids = httpGetJson_("https://hacker-news.firebaseio.com/v0/topstories.json").slice(0,5);
+  if (usage) usage.add('hackernews');
+  const reqs = ids.map((id,i) => ({ key:'s'+i, apiId:'hackernews',
+    url:"https://hacker-news.firebaseio.com/v0/item/" + id + ".json" }));
+  const r = parallelFetch_(reqs, usage);
+  const stories = [];
+  ids.forEach((id,i) => {
+    const s = r['s'+i];
+    if (s && s.title) stories.push({ title:s.title, url:s.url, score:s.score, by:s.by });
+  });
+  return { source:"HackerNews API", stories:stories };
+}
+
+function fetchCountry_(name, usage) {
+  if (!name) throw new Error("ไม่ระบุชื่อประเทศ");
+  const data = httpGetJson_("https://restcountries.com/v3.1/name/" + encodeURIComponent(name));
+  if (usage) usage.add('restcountries');
+  const c = data[0];
+  return { ชื่อ:c.name.common, ชื่อทางการ:c.name.official,
+           เมืองหลวง:c.capital ? c.capital[0] : "N/A", ภูมิภาค:c.region,
+           ประชากร:c.population, สกุลเงิน:c.currencies ? Object.keys(c.currencies).join(", ") : "N/A" };
+}
+
+function fetchIp_(ip, usage) {
+  const data = httpGetJson_("http://ip-api.com/json/" + (ip ? encodeURIComponent(ip) : ""));
+  if (usage) usage.add('ipapi');
+  if (data.status === "fail") throw new Error("สืบค้น IP นี้ไม่ได้: " + data.message);
+  return { ip:data.query, ประเทศ:data.country, เมือง:data.city,
+           ผู้ให้บริการ:data.isp, เขตเวลา:data.timezone };
+}
+
+function httpGetJson_(url) {
+  const res = UrlFetchApp.fetch(url, { muteHttpExceptions:true, headers:{ "User-Agent":"Mozilla/5.0" } });
+  if (res.getResponseCode() < 200 || res.getResponseCode() >= 300) throw new Error("HTTP " + res.getResponseCode());
+  return JSON.parse(res.getContentText());
+}
+
+// ====================================================================
+// TOOL DISPATCHER
+// ====================================================================
+
+function fetchToolData(tool, params) {
+  params = params || {};
+  const usage = newUsageCollector_();
+  try {
+    let out;
+    switch (tool) {
+      case 'knowledge':
+      case 'wiki': {
+        const k = fetchKnowledgeMultiSource_(params.query, usage);
+        if (!k.found) { out = { success:false, notFound:true,
+          summary:"ไม่พบข้อมูลเรื่องนี้ในแหล่งอ้างอิงที่มีอยู่", source:"ไม่พบข้อมูล" }; break; }
+        out = { success:true, multiSource:true,
+          summary:{ คำค้น:params.query, จำนวนแหล่งที่พบ:k.sourceCount,
+            ผลการตรวจสอบข้ามแหล่ง:k.crossCheck.detail,
+            แหล่งข้อมูล:k.sources.map(s => ({ แหล่ง:s.name, หัวข้อ:s.title, เนื้อหา:s.content, ลิงก์:s.url })) },
+          source:k.sourceNames, sourceCount:k.sourceCount, usedPremium:k.usedPremium,
+          verifyLevel:k.crossCheck.level, verifyLabel:k.crossCheck.label };
+        break;
+      }
+      case 'crypto': {
+        const c = fetchCryptoMulti_(params.coin, usage);
+        out = { success:true, multiSource:true,
+          summary:{ ข้อมูลราคา:c.data, ผลการตรวจสอบข้ามแหล่ง:c.verify.detail },
+          source:c.sourceNames, sourceCount:c.sourceNames.split(' + ').length,
+          verifyLevel:c.verify.level, verifyLabel:c.verify.label };
+        break;
+      }
+      case 'currency': {
+        const c = fetchCurrencyMulti_(params.from, params.to, usage);
+        out = { success:true, multiSource:true,
+          summary:{ ข้อมูลอัตราแลกเปลี่ยน:c.data, ผลการตรวจสอบข้ามแหล่ง:c.verify.detail },
+          source:c.sourceNames, sourceCount:c.sourceNames.split(' + ').length,
+          verifyLevel:c.verify.level, verifyLabel:c.verify.label };
+        break;
+      }
+      case 'weather': {
+        const w = fetchWeatherMulti_(params.location, usage);
+        out = { success:true, multiSource:true,
+          summary:{ ข้อมูลสภาพอากาศ:w.data, ผลการตรวจสอบข้ามแหล่ง:w.verify.detail },
+          source:w.sourceNames, sourceCount:w.sourceNames.split(' + ').length,
+          verifyLevel:w.verify.level, verifyLabel:w.verify.label };
+        break;
+      }
+      case 'news': {
+        const n = fetchNewsMulti_(params.query, usage);
+        out = { success:true, multiSource:n.sourceCount > 1, summary:n.data,
+                source:n.sourceNames, sourceCount:n.sourceCount };
+        break;
+      }
+      case 'stock': {
+        const s = fetchStockMulti_(params.symbol, params.query || params.symbol, usage);
+        out = { success:true, summary:s.data, source:s.sourceNames, sourceCount:s.sourceCount || 1 };
+        break;
+      }
+      case 'browse': {
+        const b = fetchUrlContent_(params.url);
+        out = { success:true, summary:b, source:b.title || params.url, sourceCount:1 };
+        break;
+      }
+      case 'hackernews':
+        out = { success:true, summary:fetchHackerNews_(usage), source:"HackerNews API", sourceCount:1 }; break;
+      case 'country':
+        out = { success:true, summary:fetchCountry_(params.name, usage), source:"REST Countries", sourceCount:1 }; break;
+      case 'ip_lookup':
+        out = { success:true, summary:fetchIp_(params.ip, usage), source:"IP-API", sourceCount:1 }; break;
+      default:
+        out = { success:false, summary:"ไม่มีเครื่องมือนี้", source:"System" };
+    }
+    usage.flush();
+    return out;
+  } catch (e) {
+    usage.flush();
+    return { success:false, summary:e.toString(), source:"ระบบดึงข้อมูลผิดพลาด" };
+  }
+}
+
+// ====================================================================
+// NORMAL & DEEP CHAT (เหมือนเดิมทั้งหมด)
+// ====================================================================
+
+function getCacheKey_(userMessage) {
+  const n = (userMessage || "").toLowerCase().replace(/\s+/g,' ').trim();
+  const d = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, "ceres::" + n);
+  return 'ans_' + d.map(b => (b < 0 ? b + 256 : b).toString(16).padStart(2,'0')).join('').substring(0,24);
+}
+
+function sendMessageToAI(sessionId, userMessage, selectedModel, options) {
+  assertSessionOwnership_(sessionId);
+  options = options || {};
+  const email = getUserEmail_();
+  try {
+    const ctx = getConversationContext_(sessionId);
+    const cache = CacheService.getUserCache();
+    const key = getCacheKey_(userMessage);
+
+    if (ctx.history.length <= 1 && !options.noCache) {
+      const cached = cache.get(key);
+      if (cached) {
+        try {
+          const c = JSON.parse(cached);
+          markMemoryDirty_(sessionId, email);
+          return { success:true, reply:c.r, thinking:c.t, latency:"cached", cached:true, usage:{} };
+        } catch (e) {}
       }
     }
 
-    // แก้: syncPill ให้โชว์ label ล่าม
-    function syncPill() {
-      const pill = document.getElementById('pill');
-      const lbl = document.getElementById('pill-lbl');
-      const modeLabel = interpreterMode ? ' · ล่ามไทย-จีน' : (deepMode ? ' · คิดลึก' : '');
-      lbl.textContent = model ? (shortName(model) + modeLabel) : 'ยังไม่มีโมเดล';
-      pill.classList.toggle('deep', deepMode || interpreterMode);
-      document.getElementById('mode-fast').classList.toggle('sel', !deepMode && !interpreterMode);
-      document.getElementById('mode-deep').classList.toggle('sel', deepMode);
-      document.getElementById('mode-interp').classList.toggle('sel', interpreterMode);
+    const msgs = cleanConversationForLLM_([
+      { role:"system", content: buildSystemPrompt_(ctx.userMemory, null) },
+      ...ctx.history, { role:"user", content:userMessage }
+    ]);
+
+    const r = callLLM_(msgs, selectedModel, options);
+    const s = splitThinking_(r.rawReply);
+
+    if (ctx.history.length <= 1 && s.replyText) {
+      try { cache.put(key, JSON.stringify({ r:s.replyText, t:s.thinkingText }), 21600); } catch (e) {}
     }
 
-    function setConn(type, txt) {
-      const c = document.getElementById('conn');
-      c.className = 'conn ' + type;
-      c.innerHTML = `<span class="dot"></span><span class="txt">${esc(txt)}</span>`;
+    markMemoryDirty_(sessionId, email);
+    return { success:true, reply:s.replyText, thinking:s.thinkingText,
+             latency:r.latency, usage:r.usage };
+  } catch (e) {
+    return { success:false, reply:e.message || e.toString(), thinking:"", latency:"0ms" };
+  }
+}
+
+function sendMessageToAIWithTool(sessionId, userMessage, selectedModel, toolResult, options) {
+  assertSessionOwnership_(sessionId);
+  options = options || {};
+  const email = getUserEmail_();
+  try {
+    const ctx = getConversationContext_(sessionId);
+    const isMulti = !!toolResult.multiSource && (toolResult.sourceCount || 0) > 1;
+
+    let toolContent;
+    if (isMulti) {
+      toolContent = "【ข้อมูลจาก " + toolResult.sourceCount + " แหล่งพร้อมกัน】\n" +
+        JSON.stringify(toolResult.summary, null, 1) + "\n\n" +
+        "สถานะตรวจสอบข้ามแหล่ง: " + (toolResult.verifyLabel || '-') + "\n" +
+        (toolResult.verifyLevel === 'low'
+          ? "⚠️ แหล่งไม่ตรงกัน ต้องแจ้งผู้ใช้ว่าต่างกันอย่างไร\n"
+          : "✓ ข้อมูลสอดคล้องกัน ตอบได้อย่างมั่นใจ\n");
+    } else {
+      toolContent = "【ข้อมูลอ้างอิงจาก " + toolResult.source + "】\n" +
+        JSON.stringify(toolResult.summary, null, 1);
     }
 
-    function autoGrow(el) { el.style.height='auto'; el.style.height = Math.min(el.scrollHeight,190)+'px'; }
-    function onKey(e) {
-      const mobile = window.innerWidth <= 820;
-      if (e.key === 'Enter' && !e.shiftKey && !mobile) { e.preventDefault(); send(); }
-    }
+    const msgs = cleanConversationForLLM_([
+      { role:"system", content: buildSystemPrompt_(ctx.userMemory, isMulti ? 'multi' : 'single') },
+      ...ctx.history, { role:"system", content:toolContent }, { role:"user", content:userMessage }
+    ]);
 
-    /* ═══ MIC ═══ */
-    let recog = null, recording = false;
-    function toggleMic() {
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) { alert("เบราว์เซอร์นี้ไม่รองรับการพิมพ์ด้วยเสียง ลองใช้ Chrome นะคะ"); return; }
-      const btn = document.getElementById('mic');
-      if (recording) { if (recog) recog.stop(); return; }
+    const r = callLLM_(msgs, selectedModel, options);
+    const s = splitThinking_(r.rawReply);
 
-      recog = new SR();
-      recog.lang = 'th-TH'; recog.interimResults = true; recog.continuous = false;
-      const inp = document.getElementById('input');
-      const base = inp.value;
-
-      recog.onstart = () => { recording = true; btn.classList.add('rec'); };
-      recog.onresult = e => {
-        let txt = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) txt += e.results[i][0].transcript;
-        inp.value = (base ? base + ' ' : '') + txt;
-        autoGrow(inp);
-      };
-      recog.onerror = () => { recording = false; btn.classList.remove('rec'); };
-      recog.onend = () => { recording = false; btn.classList.remove('rec'); inp.focus(); };
-      recog.start();
-    }
-
-    /* ═══ LIVE ═══ */
-    function addLive() {
-      const id = 'lv-' + Date.now();
-      const t = document.getElementById('thread');
-      const d = document.createElement('div');
-      d.className = 'row'; d.id = id;
-      d.innerHTML = `<div class="live">${logoSVG('busy')}<span class="live-txt" id="${id}-t">กำลังทำความเข้าใจ</span></div>`;
-      t.appendChild(d); scrollDown();
-      return { id, steps: [] };
-    }
-    function setLive(h, txt) {
-      if (!h) return;
-      const el = document.getElementById(h.id + '-t');
-      if (!el || el.textContent === txt) return;
-      el.classList.add('fade');
-      setTimeout(() => { el.textContent = txt; el.classList.remove('fade'); }, 190);
-    }
-    function liveSteps(h, list) {
-      const el = document.getElementById(h.id);
-      if (!el) return;
-      h.steps = list;
-      el.innerHTML = `<div class="steps" id="${h.id}-s"></div>
-        <div class="live">${logoSVG('busy')}<span class="live-txt" id="${h.id}-t">เริ่มต้น</span></div>`;
-      renderSteps(h, -1);
-    }
-    function renderSteps(h, active) {
-      const box = document.getElementById(h.id + '-s');
-      if (!box) return;
-      box.innerHTML = h.steps.map((s,i) => {
-        const cls = i < active ? 'done' : (i === active ? 'active' : '');
-        const ico = i < active ? '<i class="fa-solid fa-check"></i>'
-                  : i === active ? '<i class="fa-solid fa-circle-notch fa-spin"></i>'
-                  : '<i class="fa-regular fa-circle" style="opacity:.35"></i>';
-        return `<div class="step ${cls}"><span class="ico">${ico}</span><span>${esc(s)}</span></div>`;
-      }).join('');
-      scrollDown();
-    }
-    function stepTo(h, i, txt) { renderSteps(h, i); if (txt) setLive(h, txt); }
-    function rmLive(h) { if (!h) return; const el = document.getElementById(h.id); if (el) el.remove(); }
-
-    /* ═══ SEND ═══ */
-    function send() {
-      const inp = document.getElementById('input');
-      const text = inp.value.trim();
-      if (!text || busy) return;
-      if (!model) { alert("ยังไม่ได้เชื่อมต่อโมเดล เปิด LM Studio แล้วกดปุ่ม + → เชื่อมต่อโมเดลใหม่"); return; }
-      closePops();
-
-      // ถ้ายังไม่มี session (curId === null) ให้สร้างเสียก่อน
-      if (!curId) {
-        const nt = text.length > 28 ? text.substring(0,28) + '…' : text;
-        google.script.run.withSuccessHandler(s => {
-          sessions.unshift(s);
-          curId = s.id;
-          deepMode = false;
-          interpreterMode = false;
-          syncPill();
-          renderList();
-          document.getElementById('topbar-title').textContent = nt;
-          
-          const em = document.querySelector('.empty'); if (em) em.remove();
-          addUser(text);
-          google.script.run.saveChatMessage(curId, 'user', text, '', '');
-          inp.value = ''; autoGrow(inp);
-          run(text);
-        }).withFailureHandler(e => alert("สร้างแชทใหม่ไม่ได้: " + e))
-          .createUserSession(nt);
-        return;
-      }
-
-      const s = cur();
-      if (s && (s.title === 'แชทใหม่' || !s.title)) {
-        const nt = text.length > 28 ? text.substring(0,28) + '…' : text;
-        s.title = nt; renderList();
-        document.getElementById('topbar-title').textContent = nt;
-        google.script.run.updateSessionTitle(s.id, nt);
-      }
-
-      const em = document.querySelector('.empty'); if (em) em.remove();
-      addUser(text);
-      google.script.run.saveChatMessage(curId, 'user', text, '', '');
-      inp.value = ''; autoGrow(inp);
-      run(text);
-    }
-
-    // แก้: run ให้ข้าม tool-planning เมื่ออยู่โหมดล่าม
-    function run(text) {
-      busy = true;
-      document.getElementById('send').disabled = true;
-      const h = addLive();
-      if (interpreterMode) { runInterpreter(text, h); return; }
-      google.script.run
-        .withSuccessHandler(plan => {
-          if (!plan || plan.tool === 'none') { afterTool(text, h, null); return; }
-          setLive(h, STEP[plan.tool] || 'ดึงข้อมูล');
-          google.script.run
-            .withSuccessHandler(tr => afterTool(text, h, tr && tr.success ? tr : null))
-            .withFailureHandler(() => afterTool(text, h, null))
-            .fetchToolData(plan.tool, plan.params);
-        })
-        .withFailureHandler(() => afterTool(text, h, null))
-        .planToolUse(text, model);
-    }
-
-    // เพิ่ม: runInterpreter ฟังก์ชันใหม่
-    function runInterpreter(text, h) {
-      setLive(h, 'กำลังแปล');
-      google.script.run.withSuccessHandler(res => finish(res, h, null, null))
-        .withFailureHandler(err => { rmLive(h); unbusy(); addAI('','เชื่อมต่อไม่สำเร็จ: '+err,null,false); })
-        .sendMessageInterpreter(curId, text, model);
-    }
-
-    function afterTool(text, h, tool) { deepMode ? runDeep(text,h,tool) : runNormal(text,h,tool); }
-
-    function runNormal(text, h, tool) {
-      setLive(h, 'กำลังเรียบเรียงคำตอบ');
-      const ok = res => finish(res, h, tool ? tool.source : null, tool);
-      const fail = err => { rmLive(h); unbusy(); addAI('','เชื่อมต่อไม่สำเร็จ: '+err,null,false); };
-      if (tool) google.script.run.withSuccessHandler(ok).withFailureHandler(fail)
-        .sendMessageToAIWithTool(curId, text, model, tool, {});
-      else google.script.run.withSuccessHandler(ok).withFailureHandler(fail)
-        .sendMessageToAI(curId, text, model, {});
-    }
-
-    function runDeep(text, h, tool) {
-      liveSteps(h, ['ทำความเข้าใจโจทย์', 'ร่างคำตอบตามแผน', 'ตรวจทานและปรับปรุง']);
-      stepTo(h, 0, 'ตอบคำถามเกี่ยวกับโจทย์ก่อนลงมือ');
-
-      google.script.run.withSuccessHandler(a => {
-        if (!a || !a.success) { rmLive(h); unbusy(); addAI('','วิเคราะห์โจทย์ไม่สำเร็จ',null,false); return; }
-        stepTo(h, 1, 'ลงมือเขียนคำตอบ');
-
-        google.script.run.withSuccessHandler(d => {
-          if (!d || !d.success) { rmLive(h); unbusy(); addAI('','ร่างคำตอบไม่สำเร็จ',null,false); return; }
-          stepTo(h, 2, 'ตรวจหาจุดผิดพลาดและปรับปรุง');
-
-          google.script.run.withSuccessHandler(f => {
-            if (!f || !f.success) { rmLive(h); unbusy(); addAI('','ตรวจทานไม่สำเร็จ',null,false); return; }
-            const think = '◆ ทำความเข้าใจโจทย์\n' + a.plan +
-              (d.draftThinking ? '\n\n◆ ระหว่างร่าง\n' + d.draftThinking : '') +
-              '\n\n◆ ตรวจทาน\nตรวจสอบร่างกับแผนที่วางไว้ แก้จุดที่ตกหล่นแล้วเรียบเรียงใหม่';
-            finish({ success:true, reply:f.reply, thinking:think }, h, tool ? tool.source : null, tool);
-          }).withFailureHandler(e => { rmLive(h); unbusy(); addAI('','ตรวจทานล้มเหลว: '+e,null,false); })
-            .deepThinkRefine(curId, text, a.plan, d.draft, a.carry, model);
-
-        }).withFailureHandler(e => { rmLive(h); unbusy(); addAI('','ร่างคำตอบล้มเหลว: '+e,null,false); })
-          .deepThinkDraft(curId, text, a.plan, a.carry, model, tool);
-
-      }).withFailureHandler(e => { rmLive(h); unbusy(); addAI('','วิเคราะห์ล้มเหลว: '+e,null,false); })
-        .deepThinkAnalyze(curId, text, model, tool);
-    }
-
-    function unbusy() { busy = false; document.getElementById('send').disabled = false; }
-
-    function finish(res, h, src, tool) {
-      rmLive(h); unbusy();
-      if (res.success) {
-        google.script.run.saveChatMessage(curId, 'assistant', res.reply, res.thinking, src || "");
-        const s = cur();
-        if (s && s.messages) s.messages.push({ role:'assistant', thinking:res.thinking,
-          content:res.reply, source:src });
-        addAI(res.thinking, res.reply, src, true, res.cached, tool);
-      } else addAI('', res.reply, null, false);
-    }
-
-    /* ═══ RENDER ═══ */
-    function addUser(text) {
-      const t = document.getElementById('thread');
-      const d = document.createElement('div');
-      d.className = 'row user';
-      d.innerHTML = `<div class="bubble-user">${esc(text)}</div>`;
-      t.appendChild(d); scrollDown();
-    }
-
-    function thinkHTML(th) {
-      if (!th) return '';
-      const body = th.split(/◆\s*/).filter(Boolean).map(c => {
-        const nl = c.indexOf('\n');
-        if (nl === -1) return esc(c);
-        return `<span class="think-stage">${esc(c.substring(0,nl).trim())}</span>${esc(c.substring(nl+1).trim())}`;
-      }).join('\n\n');
-      return `<details class="think">
-        <summary><i class="fa-solid fa-chevron-right chev"></i> กระบวนการคิด</summary>
-        <div class="think-body">${body}</div></details>`;
-    }
-
-    function tagsHTML(src, cached, tool) {
-      let h = '';
-      if (tool && tool.verifyLevel && tool.sourceCount > 1) {
-        const lv = tool.verifyLevel;
-        const ic = lv==='high'?'fa-circle-check':lv==='medium'?'fa-circle-half-stroke':
-                   lv==='low'?'fa-triangle-exclamation':'fa-circle-info';
-        h += `<span class="tag v-${esc(lv)}"><i class="fa-solid ${ic}"></i>${esc(tool.verifyLabel||'')}</span>`;
-      }
-      if (tool && tool.usedPremium) h += `<span class="tag prem"><i class="fa-solid fa-star"></i>แหล่งแม่นยำสูง</span>`;
-      if (src) src.split(' + ').forEach(s => h += `<span class="tag src">${esc(s.trim())}</span>`);
-      if (cached) h += `<span class="tag cache"><i class="fa-solid fa-bolt"></i>แคช</span>`;
-      return h;
-    }
-
-    function addAI(thinking, text, src, stream, cached, tool) {
-      const t = document.getElementById('thread');
-      const d = document.createElement('div');
-      d.className = 'row';
-      const id = 'm' + Date.now() + Math.floor(Math.random()*999);
-      d.innerHTML = `${thinkHTML(thinking)}
-        <div class="msg-ai" id="${id}" data-raw="${encodeURIComponent(text)}"></div>
-        <div class="meta" id="mt-${id}"></div>`;
-      t.appendChild(d);
-
-      const body = document.getElementById(id), meta = document.getElementById('mt-'+id);
-      const done = () => {
-        body.innerHTML = md(text);
-        if (window.hljs) d.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
-        meta.innerHTML = `<button class="act" onclick="copyM('${id}')"><i class="fa-regular fa-copy"></i>คัดลอก</button>
-          <button class="act" onclick="regen()"><i class="fa-solid fa-rotate-right"></i>ลองใหม่</button>`
-          + tagsHTML(src, cached, tool);
-        scrollDown();
-      };
-
-      if (!stream) { done(); return; }
-      let i = 0; const stp = cached ? 20 : 8;
-      const tm = setInterval(() => {
-        i += stp;
-        if (i >= text.length) { clearInterval(tm); done(); return; }
-        body.innerHTML = md(text.substring(0,i)) + '<span class="cursor"></span>';
-        scrollDown();
-      }, 5);
-    }
-
-    function regen() {
-      const s = cur();
-      if (!model || busy) return;
-      let last = null;
-      if (s && s.messages) for (let i = s.messages.length-1; i >= 0; i--)
-        if (s.messages[i].role === 'user') { last = s.messages[i].content; break; }
-      if (!last) return;
-      google.script.run.withSuccessHandler(() => { openChat(); setTimeout(() => run(last), 350); })
-        .withFailureHandler(e => alert("ลบคำตอบเดิมไม่สำเร็จ: " + e))
-        .deleteLastAssistantMessage(curId);
-    }
-
-    /* ═══ QUOTA ═══ */
-    function openQuota() {
-      document.getElementById('quota-modal').classList.add('open');
-      closeSideMobile();
-      const b = document.getElementById('quota-body');
-      b.innerHTML = '<div style="text-align:center;padding:28px;color:var(--text-muted);font-size:13.5px;">กำลังโหลด</div>';
-      google.script.run.withSuccessHandler(r => {
-        if (!r || !r.apis) { b.innerHTML = '<div style="padding:20px;color:var(--danger)">โหลดไม่สำเร็จ</div>'; return; }
-        const free = r.apis.filter(a => a.tier==='free'), prem = r.apis.filter(a => a.tier==='premium');
-        let h = `<div style="font-size:12px;color:var(--text-muted);line-height:1.55;">
-          รอบเดือน ${esc(r.month)} · ตัวนับบันทึกลง Firestore ทุกครั้งที่เรียกใช้จริง</div>`;
-        h += `<div class="tier-h free"><i class="fa-solid fa-infinity"></i> แหล่งฟรี</div>
-              <div class="tier-d">ใช้เป็นแกนหลักทุกครั้ง ไม่ต้องกังวลเรื่องโควตา</div>`;
-        free.forEach(a => h += qItem(a));
-        h += `<div class="tier-h prem"><i class="fa-solid fa-star"></i> แหล่งแม่นยำสูง</div>
-              <div class="tier-d">เรียกใช้เฉพาะตอนที่แหล่งฟรีหาข้อมูลไม่พอ หรือข้อมูลขัดแย้งกัน</div>`;
-        prem.forEach(a => h += qItem(a));
-        b.innerHTML = h;
-      }).withFailureHandler(e => {
-        b.innerHTML = '<div style="padding:20px;color:var(--danger);font-size:13px">โหลดไม่สำเร็จ: '+esc(String(e))+'</div>';
-      }).getApiQuotaStatus();
-    }
-
-    function qItem(a) {
-      const off = (a.needsKey && !a.keyConfigured) || a.exhausted;
-      const fill = (a.tier==='premium'?'prem ':'') + (a.percent>=100?'full':a.percent>=80?'warn':'');
-      let st;
-      if (a.needsKey && !a.keyConfigured) st = '<span class="q-nokey">ยังไม่ได้ใส่ Key</span>';
-      else if (a.exhausted) st = '<span style="color:var(--danger);font-weight:600">โควตาเต็ม</span>';
-      else if (a.unlimited) st = `ใช้แล้ว ${a.used} · ไม่จำกัด`;
-      else { st = `${a.used} / ${a.limit}`;
-      if (a.providerRemaining != null) st += ` <span class="q-real">· เหลือจริง ${a.providerRemaining}</span>`; }
-      let h = `<div class="q-item ${off?'off':''}">
-        <div class="q-top"><span class="q-name">${esc(a.label)}</span><span class="q-cnt">${st}</span></div>`;
-      if (!a.unlimited) h += `<div class="q-bar"><div class="q-fill ${fill}" style="width:${a.percent}%"></div></div>`;
-      h += `<div class="q-note">${esc(a.note)}</div>`;
-      if (a.needsKey && !a.keyConfigured && a.keyProp)
-        h += `<div class="q-setup">${esc(a.keyProp)}${a.signup ? ' · ' + esc(a.signup) : ''}</div>`;
-      return h + `</div>`;
-    }
-
-    function closeQuota(){ document.getElementById('quota-modal').classList.remove('open'); }
-
-    function md(t){ try { return marked.parse(t||''); } catch(e){ return esc(t||'').replace(/\n/g,'<br>'); } }
-    function scrollDown(){ const s = document.getElementById('scroll'); s.scrollTop = s.scrollHeight; }
-    function esc(t){ return String(t==null?'':t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
-
-    function copyM(id) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      navigator.clipboard.writeText(decodeURIComponent(el.getAttribute('data-raw')||'')).then(() => {
-        const b = document.getElementById('mt-'+id).querySelector('.act');
-        if (b) { const o = b.innerHTML; b.innerHTML = '<i class="fa-solid fa-check"></i>คัดลอกแล้ว';
-          setTimeout(() => b.innerHTML = o, 1400); }
-      });
-    }
-  </script>
-</body>
-</html>
+    markMemoryDirty_(sessionId, email);
+    return { success:true, reply:s.replyText, thinking:s.thinkingText,
+             latency:r.latency, usage:r.usage };
+  } catch (e) {
+    return { success:false, reply:e.message || e.toString(), thinking:"", latency:"0ms" };
+  }
+}
