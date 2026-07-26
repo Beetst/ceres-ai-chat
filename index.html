@@ -207,6 +207,14 @@
     .tag.prem { background:#f2effa; color:var(--premium); border-color:#ddd6ef; }
     .tag.cache { background:#eef4ef; color:var(--verify); border-color:#d4e3d8; }
 
+    /* ═══ BILINGUAL CARD (โหมดล่าม) ═══ */
+    .bilingual-card { background:var(--surface); border:1px solid var(--border);
+      border-radius:14px; padding:16px 18px; max-width:520px; }
+    .bi-zh { font-size:19px; font-weight:600; color:var(--text); line-height:1.6;
+      word-break:break-word; }
+    .bi-div { height:1px; background:var(--border-soft); margin:11px 0; }
+    .bi-th { font-size:15px; color:var(--text-soft); line-height:1.6; word-break:break-word; }
+
     .empty { display:flex; flex-direction:column; align-items:center; justify-content:center;
       padding:52px 24px 30px; text-align:center; gap:14px; }
     .empty h1 { font-family:Georgia,'Times New Roman',serif; font-size:29px; font-weight:400;
@@ -689,6 +697,7 @@
 
     // เพิ่ม: ตัวแปร interpreterMode
     let sessions = [], curId = null, model = "", models = [], deepMode = false, interpreterMode = false, busy = false;
+    const INTERP_SEP = "⟺⟺⟺"; // ต้องตรงกับ INTERPRETER_SEP ใน Code.gs
 
     const STEP = { knowledge:'ค้นข้อมูลจากหลายแหล่ง', wiki:'ค้นข้อมูลจากหลายแหล่ง',
       weather:'ตรวจสภาพอากาศ', crypto:'เทียบราคาคริปโต', currency:'เทียบอัตราแลกเปลี่ยน',
@@ -1168,6 +1177,7 @@
       const d = document.createElement('div');
       d.className = 'row';
       const id = 'm' + Date.now() + Math.floor(Math.random()*999);
+      const isBilingual = typeof text === 'string' && text.indexOf(INTERP_SEP) !== -1;
       d.innerHTML = `${thinkHTML(thinking)}
         <div class="msg-ai" id="${id}" data-raw="${encodeURIComponent(text)}"></div>
         <div class="meta" id="mt-${id}"></div>`;
@@ -1175,15 +1185,25 @@
 
       const body = document.getElementById(id), meta = document.getElementById('mt-'+id);
       const done = () => {
-        body.innerHTML = md(text);
-        if (window.hljs) d.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+        if (isBilingual) {
+          const parts = text.split(INTERP_SEP);
+          const zh = (parts[0] || '').trim(), th = (parts[1] || '').trim();
+          body.innerHTML = `<div class="bilingual-card">
+            <div class="bi-zh">${esc(zh)}</div>
+            <div class="bi-div"></div>
+            <div class="bi-th">${esc(th)}</div>
+          </div>`;
+        } else {
+          body.innerHTML = md(text);
+          if (window.hljs) d.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+        }
         meta.innerHTML = `<button class="act" onclick="copyM('${id}')"><i class="fa-regular fa-copy"></i>คัดลอก</button>
           <button class="act" onclick="regen()"><i class="fa-solid fa-rotate-right"></i>ลองใหม่</button>`
           + tagsHTML(src, cached, tool);
         scrollDown();
       };
 
-      if (!stream) { done(); return; }
+      if (!stream || isBilingual) { done(); return; }
       let i = 0; const stp = cached ? 20 : 8;
       const tm = setInterval(() => {
         i += stp;
@@ -1255,7 +1275,9 @@
     function copyM(id) {
       const el = document.getElementById(id);
       if (!el) return;
-      navigator.clipboard.writeText(decodeURIComponent(el.getAttribute('data-raw')||'')).then(() => {
+      let raw = decodeURIComponent(el.getAttribute('data-raw')||'');
+      raw = raw.split(INTERP_SEP).map(s => s.trim()).join('\n\n');
+      navigator.clipboard.writeText(raw).then(() => {
         const b = document.getElementById('mt-'+id).querySelector('.act');
         if (b) { const o = b.innerHTML; b.innerHTML = '<i class="fa-solid fa-check"></i>คัดลอกแล้ว';
           setTimeout(() => b.innerHTML = o, 1400); }
