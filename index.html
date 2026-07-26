@@ -209,11 +209,15 @@
 
     /* ═══ BILINGUAL CARD (โหมดล่าม) ═══ */
     .bilingual-card { background:var(--surface); border:1px solid var(--border);
-      border-radius:14px; padding:16px 18px; max-width:520px; }
-    .bi-zh { font-size:19px; font-weight:600; color:var(--text); line-height:1.6;
-      word-break:break-word; }
-    .bi-div { height:1px; background:var(--border-soft); margin:11px 0; }
-    .bi-th { font-size:15px; color:var(--text-soft); line-height:1.6; word-break:break-word; }
+      border-radius:14px; padding:16px 18px; max-width:520px; display:flex; flex-direction:column; gap:12px; }
+    .bi-row { display:flex; align-items:flex-start; gap:10px; }
+    .bi-tag { flex-shrink:0; font-size:10.5px; font-weight:700; letter-spacing:.03em;
+      color:var(--accent); background:var(--accent-soft); border-radius:6px;
+      padding:3px 7px; margin-top:3px; }
+    .bi-tag.th { color:var(--verify); background:#eef4ef; }
+    .bi-zh { font-size:19px; font-weight:600; color:var(--text); line-height:1.55; word-break:break-word; }
+    .bi-th { font-size:15px; color:var(--text-soft); line-height:1.55; word-break:break-word; }
+    .bi-div { height:1px; background:var(--border-soft); }
 
     .empty { display:flex; flex-direction:column; align-items:center; justify-content:center;
       padding:52px 24px 30px; text-align:center; gap:14px; }
@@ -1189,9 +1193,8 @@
           const parts = text.split(INTERP_SEP);
           const zh = (parts[0] || '').trim(), th = (parts[1] || '').trim();
           body.innerHTML = `<div class="bilingual-card">
-            <div class="bi-zh">${esc(zh)}</div>
-            <div class="bi-div"></div>
-            <div class="bi-th">${esc(th)}</div>
+            <div class="bi-row"><span class="bi-tag">CH</span><span class="bi-zh">${esc(zh)}</span></div>
+            <div class="bi-row"><span class="bi-tag th">TH</span><span class="bi-th">${esc(th)}</span></div>
           </div>`;
         } else {
           body.innerHTML = md(text);
