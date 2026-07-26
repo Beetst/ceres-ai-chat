@@ -356,13 +356,13 @@
     <div class="auth-card">
       <div class="auth-logo" id="auth-logo-box"></div>
       <h2 class="auth-title">Ceres AI</h2>
-      <p class="auth-sub" id="auth-subtitle">สร้างบัญชีใหม่เพื่อเริ่มใช้งาน Ceres AI</p>
+      <p class="auth-sub" id="auth-subtitle">เข้าสู่ระบบเพื่อใช้งาน Ceres AI</p>
 
       <div class="auth-error" id="auth-error-box"></div>
 
       <form id="auth-form" onsubmit="handleAuthSubmit(event)">
         <!-- Display Name (เฉพาะหน้าสมัครสมาชิก) -->
-        <div class="auth-field" id="field-name">
+        <div class="auth-field" id="field-name" style="display:none">
           <label class="auth-label">ชื่อผู้ใช้งาน (Display Name)</label>
           <input type="text" class="auth-input" id="auth-name" placeholder="ชื่อของคุณ">
         </div>
@@ -383,7 +383,7 @@
         </div>
 
         <!-- Confirm Password (เฉพาะหน้าสมัครสมาชิก) -->
-        <div class="auth-field" id="field-confirm-pass">
+        <div class="auth-field" id="field-confirm-pass" style="display:none">
           <label class="auth-label">ยืนยันรหัสผ่าน (Confirm Password)</label>
           <div class="auth-input-wrap">
             <input type="password" class="auth-input" id="auth-confirm-pass" placeholder="••••••••">
@@ -391,12 +391,12 @@
           </div>
         </div>
 
-        <button type="submit" class="btn-auth-submit" id="btn-auth-submit">สร้างบัญชีผู้ใช้</button>
+        <button type="submit" class="btn-auth-submit" id="btn-auth-submit">เข้าสู่ระบบ</button>
       </form>
 
       <div class="auth-switch">
-        <span id="auth-switch-text">มีบัญชีอยู่แล้ว?</span>
-        <a onclick="toggleAuthMode()" id="auth-switch-btn">เข้าสู่ระบบที่นี่</a>
+        <span id="auth-switch-text">ยังไม่มีบัญชี?</span>
+        <a onclick="toggleAuthMode()" id="auth-switch-btn">สมัครสมาชิกที่นี่</a>
       </div>
     </div>
   </div>
@@ -445,6 +445,13 @@
             <span class="pi-ic"><i class="fa-solid fa-lightbulb"></i></span>
             <span class="pi-tx"><span class="pi-t">คิดลึก</span>
               <span class="pi-d">วิเคราะห์โจทย์ → ร่างคำตอบ → ตรวจทาน</span></span>
+            <span class="pi-ck"><i class="fa-solid fa-check"></i></span>
+          </button>
+          <!-- เพิ่ม: ปุ่มโหมดล่าม -->
+          <button class="pop-item" id="mode-interp" onclick="setInterpreter(true)">
+            <span class="pi-ic"><i class="fa-solid fa-language"></i></span>
+            <span class="pi-tx"><span class="pi-t">โหมดล่าม</span>
+              <span class="pi-d">แปลไทย ↔ จีนไต้หวัน อัตโนมัติ</span></span>
             <span class="pi-ck"><i class="fa-solid fa-check"></i></span>
           </button>
           <div class="pop-div"></div>
@@ -523,7 +530,7 @@
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
 
-    let isSignUp = true; // true = หน้าสมัครสมาชิก, false = หน้าเข้าสู่ระบบ
+    let isSignUp = false; // true = หน้าสมัครสมาชิก, false = หน้าเข้าสู่ระบบ
 
     function toggleAuthMode() {
       isSignUp = !isSignUp;
@@ -680,7 +687,8 @@
       </svg>`;
     }
 
-    let sessions = [], curId = null, model = "", models = [], deepMode = false, busy = false;
+    // เพิ่ม: ตัวแปร interpreterMode
+    let sessions = [], curId = null, model = "", models = [], deepMode = false, interpreterMode = false, busy = false;
 
     const STEP = { knowledge:'ค้นข้อมูลจากหลายแหล่ง', wiki:'ค้นข้อมูลจากหลายแหล่ง',
       weather:'ตรวจสภาพอากาศ', crypto:'เทียบราคาคริปโต', currency:'เทียบอัตราแลกเปลี่ยน',
@@ -761,7 +769,7 @@
 
     function newChat() {
       google.script.run.withSuccessHandler(s => {
-        sessions.unshift(s); curId = s.id; deepMode = false; syncPill();
+        sessions.unshift(s); curId = s.id; deepMode = false; interpreterMode = false; syncPill();
         renderList(); openChat(); closeSideMobile();
         document.getElementById('input').focus();
       }).withFailureHandler(e => alert("สร้างแชทใหม่ไม่ได้: " + e)).createUserSession("แชทใหม่");
@@ -809,6 +817,7 @@
       const s = cur();
       document.getElementById('topbar-title').textContent = (s && s.title) || 'Ceres';
       deepMode = !!(s && s.deepThinking);
+      interpreterMode = !!(s && s.interpreterMode);  // เพิ่ม: อ่านค่า interpreterMode
       syncPill();
 
       google.script.run.withSuccessHandler(msgs => {
@@ -827,7 +836,7 @@
       document.getElementById('thread').innerHTML = `
         <div class="empty">${logoSVG('')}
           <h1>สวัสดีค่ะ</h1>
-          <p>ถามอะไรก็ได้ หรือเลือกโหมด “คิดลึก” จากปุ่มด้านล่าง เมื่ออยากให้ Ceres วิเคราะห์โจทย์ก่อนลงมือตอบ</p>
+          <p>ถามอะไรก็ได้ หรือเลือกโหมด "คิดลึก" จากปุ่มด้านล่าง เมื่ออยากให้ Ceres วิเคราะห์โจทย์ก่อนลงมือตอบ</p>
         </div>`;
     }
 
@@ -853,7 +862,7 @@
     function renderModelList() {
       const el = document.getElementById('model-list');
       if (!models.length) {
-        el.innerHTML = `<div style="padding:9px 12px;font-size:13px;color:var(--text-muted)">ไม่พบโมเดล — เปิด LM Studio แล้วกด “เชื่อมต่อโมเดลใหม่”</div>`;
+        el.innerHTML = `<div style="padding:9px 12px;font-size:13px;color:var(--text-muted)">ไม่พบโมเดล — เปิด LM Studio แล้วกด "เชื่อมต่อโมเดลใหม่"</div>`;
         return;
       }
       el.innerHTML = models.map(m => `
@@ -867,19 +876,38 @@
 
     function setModel(m) { model = m; renderModelList(); syncPill(); closePops(); }
 
+    // แก้: setDeep ให้ล้าง interpreterMode ด้วย
     function setDeep(v) {
-      deepMode = v; syncPill(); closePops();
-      const s = cur(); if (s) s.deepThinking = v;
-      if (curId) google.script.run.withFailureHandler(()=>{}).updateSessionMode(curId, v);
+      deepMode = v; interpreterMode = false;
+      syncPill(); closePops();
+      const s = cur(); if (s) { s.deepThinking = v; s.interpreterMode = false; }
+      if (curId) {
+        google.script.run.withFailureHandler(()=>{}).updateSessionMode(curId, v);
+        google.script.run.withFailureHandler(()=>{}).updateSessionInterpreterMode(curId, false);
+      }
     }
 
+    // เพิ่ม: setInterpreter ฟังก์ชันใหม่
+    function setInterpreter(v) {
+      interpreterMode = v; deepMode = false;
+      syncPill(); closePops();
+      const s = cur(); if (s) { s.interpreterMode = v; s.deepThinking = false; }
+      if (curId) {
+        google.script.run.withFailureHandler(()=>{}).updateSessionInterpreterMode(curId, v);
+        google.script.run.withFailureHandler(()=>{}).updateSessionMode(curId, false);
+      }
+    }
+
+    // แก้: syncPill ให้โชว์ label ล่าม
     function syncPill() {
       const pill = document.getElementById('pill');
       const lbl = document.getElementById('pill-lbl');
-      lbl.textContent = model ? (shortName(model) + (deepMode ? ' · คิดลึก' : '')) : 'ยังไม่มีโมเดล';
-      pill.classList.toggle('deep', deepMode);
-      document.getElementById('mode-fast').classList.toggle('sel', !deepMode);
+      const modeLabel = interpreterMode ? ' · ล่ามไทย-จีน' : (deepMode ? ' · คิดลึก' : '');
+      lbl.textContent = model ? (shortName(model) + modeLabel) : 'ยังไม่มีโมเดล';
+      pill.classList.toggle('deep', deepMode || interpreterMode);
+      document.getElementById('mode-fast').classList.toggle('sel', !deepMode && !interpreterMode);
       document.getElementById('mode-deep').classList.toggle('sel', deepMode);
+      document.getElementById('mode-interp').classList.toggle('sel', interpreterMode);
     }
 
     function setConn(type, txt) {
@@ -982,10 +1010,12 @@
       run(text);
     }
 
+    // แก้: run ให้ข้าม tool-planning เมื่ออยู่โหมดล่าม
     function run(text) {
       busy = true;
       document.getElementById('send').disabled = true;
       const h = addLive();
+      if (interpreterMode) { runInterpreter(text, h); return; }
       google.script.run
         .withSuccessHandler(plan => {
           if (!plan || plan.tool === 'none') { afterTool(text, h, null); return; }
@@ -997,6 +1027,14 @@
         })
         .withFailureHandler(() => afterTool(text, h, null))
         .planToolUse(text, model);
+    }
+
+    // เพิ่ม: runInterpreter ฟังก์ชันใหม่
+    function runInterpreter(text, h) {
+      setLive(h, 'กำลังแปล');
+      google.script.run.withSuccessHandler(res => finish(res, h, null, null))
+        .withFailureHandler(err => { rmLive(h); unbusy(); addAI('','เชื่อมต่อไม่สำเร็จ: '+err,null,false); })
+        .sendMessageInterpreter(curId, text, model);
     }
 
     function afterTool(text, h, tool) { deepMode ? runDeep(text,h,tool) : runNormal(text,h,tool); }
