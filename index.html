@@ -15,16 +15,55 @@
       --accent:#c96442; --accent-hover:#b25636; --accent-soft:#f6ede8;
       --danger:#b4433a; --verify:#4a7c59; --premium:#7c6da8;
     }
-    * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+    * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans Thai',Tahoma,sans-serif; }
     html, body { height:100%; }
     body {
-      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans Thai',Tahoma,sans-serif;
       background:var(--bg); color:var(--text); height:100vh; height:100dvh;
       display:flex; overflow:hidden; font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased;
     }
-    .app { display:flex; width:100%; height:100%; position:relative; }
+    .hidden { display: none !important; }
 
-    /* ═══ SIDEBAR ═══ */
+    /* ═══ AUTH SCREEN STYLES ═══ */
+    .auth-container {
+      position: fixed; inset: 0; background: var(--bg); z-index: 1000;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .auth-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 24px;
+      width: 100%; max-width: 420px; padding: 36px 32px; box-shadow: 0 10px 30px rgba(31, 30, 29, 0.04);
+    }
+    .auth-logo-wrap { display: flex; justify-content: center; margin-bottom: 16px; }
+    .auth-title { text-align: center; font-size: 24px; font-weight: 600; letter-spacing: -.02em; margin-bottom: 6px; }
+    .auth-sub { text-align: center; font-size: 13.5px; color: var(--text-muted); margin-bottom: 24px; }
+    .auth-field { margin-bottom: 16px; }
+    .auth-field label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+    .auth-input-wrap { position: relative; display: flex; align-items: center; }
+    .auth-input-wrap input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px 14px; font-size: 14.5px; color: var(--text); outline: none; transition: border-color .15s;
+    }
+    .auth-input-wrap input:focus { border-color: var(--accent); background: #fff; }
+    .auth-input-wrap .toggle-eye { position: absolute; right: 14px; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 4px; }
+    .auth-meta { display: flex; align-items: center; justify-content: space-between; font-size: 13px; margin-bottom: 22px; }
+    .auth-checkbox { display: flex; align-items: center; gap: 7px; cursor: pointer; color: var(--text-muted); user-select: none; }
+    .auth-checkbox input { accent-color: var(--accent); width: 15px; height: 15px; }
+    .auth-link { color: var(--accent); text-decoration: none; font-weight: 500; cursor: pointer; }
+    .auth-link:hover { text-decoration: underline; color: var(--accent-hover); }
+    .auth-btn {
+      width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 14px;
+      padding: 13px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background .15s, transform .1s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .auth-btn:hover { background: var(--accent-hover); }
+    .auth-btn:active { transform: scale(.98); }
+    .auth-btn:disabled { opacity: .6; cursor: not-allowed; }
+    .auth-switch { text-align: center; margin-top: 20px; font-size: 13.5px; color: var(--text-muted); }
+    .auth-alert { padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 18px; display: none; }
+    .auth-alert.error { background: #fbeeed; color: var(--danger); border: 1px solid #f0d5d2; display: block; }
+    .auth-alert.success { background: #eef4ef; color: var(--verify); border: 1px solid #d4e3d8; display: block; }
+
+    /* ═══ MAIN APP STYLES ═══ */
+    .app { display:flex; width:100%; height:100%; position:relative; }
     .backdrop { position:fixed; inset:0; background:rgba(31,30,29,.3); z-index:40; display:none; }
     .backdrop.open { display:block; }
     .sidebar { width:258px; background:var(--bg-side); border-right:1px solid var(--border);
@@ -50,12 +89,14 @@
     .chat-item .del { color:var(--text-muted); opacity:0; font-size:11px; padding:3px 4px; border-radius:5px; }
     .chat-item:hover .del { opacity:1; }
     .chat-item .del:hover { color:var(--danger); background:rgba(180,67,58,.09); }
-    .side-foot { padding:8px 12px 12px; border-top:1px solid var(--border); }
+    .side-foot { padding:8px 12px 12px; border-top:1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
     .side-btn { width:100%; background:none; border:none; color:var(--text-muted); padding:7px 9px;
       border-radius:8px; cursor:pointer; font-size:13px; display:flex; align-items:center; gap:9px;
       font-family:inherit; text-align:left; }
     .side-btn:hover { background:#eceade; color:var(--text); }
     .side-btn.danger:hover { color:var(--danger); }
+    .user-badge { padding: 6px 9px; font-size: 12px; color: var(--text-soft); display: flex; align-items: center; gap: 8px; border-radius: 8px; background: #eceade; margin-bottom: 4px; }
+    .user-badge i { color: var(--accent); }
 
     /* ═══ MAIN ═══ */
     .main { flex:1; display:flex; flex-direction:column; min-width:0; background:var(--bg); }
@@ -73,7 +114,7 @@
     .conn.error { background:#fbeeed; color:var(--danger); border-color:#f0d5d2; }
     .conn .dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
 
-    /* ═══ CHAT ═══ */
+    /* ═══ CHAT THREAD ═══ */
     .scroll { flex:1; overflow-y:auto; }
     .thread { max-width:748px; margin:0 auto; padding:8px 24px 20px; display:flex; flex-direction:column; gap:22px; }
     .row { display:flex; flex-direction:column; }
@@ -105,8 +146,9 @@
       margin-left:2px; vertical-align:-2px; animation:blink .9s step-end infinite; }
     @keyframes blink { 50% { opacity:0; } }
 
-    /* ═══ LOGO ═══ */
+    /* ═══ LOGO ANIMATION ═══ */
     .logo { width:26px; height:26px; flex-shrink:0; overflow:visible; }
+    .logo.lg { width: 56px; height: 56px; }
     .logo.sm { width:19px; height:19px; }
     .lo-out { transform-origin:24px 24px; animation:spin 16s linear infinite; }
     .lo-in { transform-origin:24px 24px; animation:spinr 11s linear infinite; }
@@ -119,9 +161,8 @@
     .logo.busy .lo-in { animation-duration:1.6s; }
     .logo.busy .lo-moon { animation-duration:1.2s; }
     .logo.busy .lo-core { animation-duration:1s; }
-    @media (prefers-reduced-motion:reduce) { .lo-out,.lo-in,.lo-core,.lo-moon { animation:none!important; } }
 
-    /* ═══ LIVE ═══ */
+    /* ═══ LIVE & THINKING ═══ */
     .live { display:flex; align-items:center; gap:10px; }
     .live-txt { font-size:14px; color:var(--text-muted); transition:opacity .2s ease; }
     .live-txt.fade { opacity:0; }
@@ -161,8 +202,7 @@
 
     .empty { display:flex; flex-direction:column; align-items:center; justify-content:center;
       padding:52px 24px 30px; text-align:center; gap:14px; }
-    .empty h1 { font-family:Georgia,'Times New Roman',serif; font-size:29px; font-weight:400;
-      letter-spacing:-.02em; }
+    .empty h1 { font-family:Georgia,'Times New Roman',serif; font-size:29px; font-weight:400; letter-spacing:-.02em; }
     .empty p { font-size:14.5px; color:var(--text-muted); max-width:410px; }
 
     /* ═══ COMPOSER ═══ */
@@ -170,19 +210,15 @@
     .composer {
       max-width:748px; margin:0 auto; background:var(--surface);
       border:1px solid var(--border); border-radius:26px; padding:6px 8px 8px;
-      box-shadow:0 2px 10px rgba(31,30,29,.05), 0 1px 2px rgba(31,30,29,.03);
-      transition:border-color .15s, box-shadow .15s;
+      box-shadow:0 2px 10px rgba(31,30,29,.05), 0 1px 2px rgba(31,30,29,.03); transition:border-color .15s, box-shadow .15s;
     }
     .composer:focus-within { border-color:#d8d2c4; box-shadow:0 4px 18px rgba(31,30,29,.08); }
     .composer textarea {
       width:100%; background:transparent; border:none; color:var(--text); font-size:16px;
-      outline:none; resize:none; max-height:190px; line-height:1.62; padding:12px 12px 6px;
-      font-family:inherit;
+      outline:none; resize:none; max-height:190px; line-height:1.62; padding:12px 12px 6px; font-family:inherit;
     }
     .composer textarea::placeholder { color:#a5a294; }
-
     .bar { display:flex; align-items:center; gap:7px; padding:2px 2px 0; }
-
     .cbtn {
       width:36px; height:36px; border-radius:50%; border:none; cursor:pointer;
       background:var(--chip); color:var(--text-soft); display:flex; align-items:center;
@@ -195,14 +231,12 @@
     .pill {
       display:inline-flex; align-items:center; gap:7px; background:var(--chip); border:none;
       color:var(--text-soft); border-radius:20px; padding:8px 14px; font-size:14.5px;
-      cursor:pointer; font-family:inherit; transition:background .15s; white-space:nowrap;
-      max-width:230px; overflow:hidden;
+      cursor:pointer; font-family:inherit; transition:background .15s; white-space:nowrap; max-width:230px; overflow:hidden;
     }
     .pill:hover { background:var(--chip-hover); }
     .pill.deep { background:var(--accent-soft); color:var(--accent); }
     .pill .lbl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .pill .cv { font-size:10px; opacity:.6; }
-
     .spacer { flex:1; }
     .sendbtn {
       width:36px; height:36px; border-radius:50%; border:none; cursor:pointer;
@@ -212,20 +246,16 @@
     .sendbtn:hover { background:var(--accent-hover); }
     .sendbtn:active { transform:scale(.94); }
     .sendbtn:disabled { background:#ddd9cd; cursor:not-allowed; }
+    .hint { max-width:748px; margin:9px auto 0; font-size:11.5px; color:#a5a294; text-align:center; user-select:none; }
 
-    .hint { max-width:748px; margin:9px auto 0; font-size:11.5px; color:#a5a294;
-      text-align:center; user-select:none; }
-
-    /* ═══ POPUP MENU ═══ */
+    /* ═══ POPUP & MODAL ═══ */
     .pop {
       position:absolute; background:var(--surface); border:1px solid var(--border);
       border-radius:15px; box-shadow:0 10px 34px rgba(31,30,29,.15); padding:6px;
-      min-width:250px; max-width:308px; z-index:120; display:none;
-      max-height:60vh; overflow-y:auto;
+      min-width:250px; max-width:308px; z-index:120; display:none; max-height:60vh; overflow-y:auto;
     }
     .pop.open { display:block; }
-    .pop-sec { font-size:11px; color:var(--text-muted); padding:8px 12px 5px; font-weight:600;
-      letter-spacing:.02em; }
+    .pop-sec { font-size:11px; color:var(--text-muted); padding:8px 12px 5px; font-weight:600; letter-spacing:.02em; }
     .pop-item {
       width:100%; background:none; border:none; text-align:left; cursor:pointer;
       padding:9px 12px; border-radius:10px; font-family:inherit; font-size:14px; color:var(--text);
@@ -241,14 +271,10 @@
     .pop-item.sel .pi-ic { color:var(--accent); }
     .pop-div { height:1px; background:var(--border-soft); margin:5px 8px; }
 
-    /* ═══ MODAL ═══ */
-    .modal { position:fixed; inset:0; background:rgba(31,30,29,.42); z-index:200;
-      display:none; align-items:center; justify-content:center; padding:20px; }
+    .modal { position:fixed; inset:0; background:rgba(31,30,29,.42); z-index:200; display:none; align-items:center; justify-content:center; padding:20px; }
     .modal.open { display:flex; }
-    .modal-card { background:var(--surface); border-radius:16px; width:100%; max-width:540px;
-      max-height:85vh; display:flex; flex-direction:column; box-shadow:0 24px 60px rgba(31,30,29,.22); }
-    .modal-head { padding:16px 20px; border-bottom:1px solid var(--border-soft);
-      display:flex; align-items:center; justify-content:space-between; }
+    .modal-card { background:var(--surface); border-radius:16px; width:100%; max-width:540px; max-height:85vh; display:flex; flex-direction:column; box-shadow:0 24px 60px rgba(31,30,29,.22); }
+    .modal-head { padding:16px 20px; border-bottom:1px solid var(--border-soft); display:flex; align-items:center; justify-content:space-between; }
     .modal-head h3 { font-size:15.5px; font-weight:600; }
     .modal-body { padding:14px 20px 20px; overflow-y:auto; }
     .tier-h { font-size:12px; font-weight:600; margin:18px 0 3px; display:flex; align-items:center; gap:7px; }
@@ -268,12 +294,10 @@
     .q-note { font-size:11px; color:#a5a294; margin-top:4px; line-height:1.5; }
     .q-real { color:var(--verify); font-weight:600; }
     .q-nokey { color:#8a6d2f; font-weight:600; }
-    .q-setup { font-size:11px; color:var(--accent); margin-top:4px;
-      font-family:ui-monospace,monospace; word-break:break-all; }
+    .q-setup { font-size:11px; color:var(--accent); margin-top:4px; font-family:ui-monospace,monospace; word-break:break-all; }
 
     @media (max-width:820px) {
-      .sidebar { position:fixed; top:0; left:0; bottom:0; width:80%; max-width:290px;
-        transform:translateX(-100%); box-shadow:2px 0 20px rgba(31,30,29,.14); }
+      .sidebar { position:fixed; top:0; left:0; bottom:0; width:80%; max-width:290px; transform:translateX(-100%); box-shadow:2px 0 20px rgba(31,30,29,.14); }
       .sidebar.open { transform:translateX(0); }
       .btn-burger { display:flex; }
       .thread { padding:6px 16px 16px; }
@@ -289,6 +313,7 @@
 </head>
 <body>
 
+  <!-- SVG Gradients -->
   <svg width="0" height="0" style="position:absolute">
     <defs>
       <linearGradient id="cg" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -302,7 +327,89 @@
     </defs>
   </svg>
 
-  <div class="app">
+  <!-- ════════════════════════════════════════════════════════
+       1. AUTH SCREEN (หน้าเข้าสู่ระบบ & สมัครสมาชิก)
+       ════════════════════════════════════════════════════════ -->
+  <div id="auth-screen" class="auth-container">
+    <div class="auth-card">
+      <div class="auth-logo-wrap" id="auth-logo"></div>
+      <h1 class="auth-title">Ceres AI</h1>
+      <p class="auth-sub" id="auth-subtitle">เข้าสู่ระบบเพื่อใช้งานผู้ช่วยส่วนตัว</p>
+
+      <div id="auth-alert" class="auth-alert"></div>
+
+      <!-- FORM 1: LOGIN -->
+      <form id="form-login" onsubmit="handleLogin(event)">
+        <div class="auth-field">
+          <label for="login-email">อีเมล (Email)</label>
+          <div class="auth-input-wrap">
+            <input type="email" id="login-email" placeholder="name@example.com" required>
+          </div>
+        </div>
+        <div class="auth-field">
+          <label for="login-password">รหัสผ่าน (Password)</label>
+          <div class="auth-input-wrap">
+            <input type="password" id="login-password" placeholder="••••••••" required>
+            <i class="fa-regular fa-eye toggle-eye" onclick="togglePass('login-password', this)"></i>
+          </div>
+        </div>
+        <div class="auth-meta">
+          <label class="auth-checkbox">
+            <input type="checkbox" id="remember-me" checked>
+            <span>จดจำการเข้าสู่ระบบ</span>
+          </label>
+          <a href="#" class="auth-link" onclick="handleForgotPassword(event)">ลืมรหัสผ่าน?</a>
+        </div>
+        <button type="submit" class="auth-btn" id="btn-login">
+          <span>เข้าสู่ระบบ</span>
+        </button>
+        <div class="auth-switch">
+          ยังไม่มีบัญชี? <a href="#" class="auth-link" onclick="switchAuthView('register', event)">สมัครสมาชิกที่นี่</a>
+        </div>
+      </form>
+
+      <!-- FORM 2: REGISTER -->
+      <form id="form-register" class="hidden" onsubmit="handleRegister(event)">
+        <div class="auth-field">
+          <label for="reg-name">ชื่อผู้ใช้งาน (Display Name)</label>
+          <div class="auth-input-wrap">
+            <input type="text" id="reg-name" placeholder="เช่น สมชาย ใจดี" required>
+          </div>
+        </div>
+        <div class="auth-field">
+          <label for="reg-email">อีเมล (Email)</label>
+          <div class="auth-input-wrap">
+            <input type="email" id="reg-email" placeholder="name@example.com" required>
+          </div>
+        </div>
+        <div class="auth-field">
+          <label for="reg-password">รหัสผ่าน (Password)</label>
+          <div class="auth-input-wrap">
+            <input type="password" id="reg-password" placeholder="อย่างน้อย 6 ตัวอักษร" minlength="6" required>
+            <i class="fa-regular fa-eye toggle-eye" onclick="togglePass('reg-password', this)"></i>
+          </div>
+        </div>
+        <div class="auth-field">
+          <label for="reg-confirm">ยืนยันรหัสผ่าน (Confirm Password)</label>
+          <div class="auth-input-wrap">
+            <input type="password" id="reg-confirm" placeholder="••••••••" minlength="6" required>
+            <i class="fa-regular fa-eye toggle-eye" onclick="togglePass('reg-confirm', this)"></i>
+          </div>
+        </div>
+        <button type="submit" class="auth-btn" id="btn-register">
+          <span>สร้างบัญชีผู้ใช้</span>
+        </button>
+        <div class="auth-switch">
+          มีบัญชีอยู่แล้ว? <a href="#" class="auth-link" onclick="switchAuthView('login', event)">เข้าสู่ระบบที่นี่</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       2. MAIN CHAT APP (หน้าแชท Ceres AI)
+       ════════════════════════════════════════════════════════ -->
+  <div class="app hidden" id="app">
     <div class="backdrop" id="backdrop" onclick="closeSide()"></div>
 
     <aside class="sidebar" id="sidebar">
@@ -315,8 +422,13 @@
       <div class="side-label">การสนทนา</div>
       <div class="chat-list" id="list"></div>
       <div class="side-foot">
+        <div class="user-badge" id="user-badge">
+          <i class="fa-solid fa-user-circle"></i>
+          <span id="user-display-email">user@email.com</span>
+        </div>
         <button class="side-btn" onclick="openQuota()"><i class="fa-solid fa-database"></i> แหล่งข้อมูลและโควตา</button>
         <button class="side-btn danger" onclick="clearAll()"><i class="fa-regular fa-trash-can"></i> ลบทั้งหมด</button>
+        <button class="side-btn danger" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> ออกจากระบบ</button>
       </div>
     </aside>
 
@@ -330,19 +442,16 @@
       <div class="scroll" id="scroll"><div class="thread" id="thread"></div></div>
 
       <div class="composer-wrap">
-        <!-- POPUP: เลือกโหมด + โมเดล -->
         <div class="pop" id="pop-model">
           <div class="pop-sec">โหมดการตอบ</div>
           <button class="pop-item" id="mode-fast" onclick="setDeep(false)">
             <span class="pi-ic"><i class="fa-solid fa-bolt"></i></span>
-            <span class="pi-tx"><span class="pi-t">ตอบทันที</span>
-              <span class="pi-d">เร็ว เหมาะกับคำถามทั่วไป</span></span>
+            <span class="pi-tx"><span class="pi-t">ตอบทันที</span><span class="pi-d">เร็ว เหมาะกับคำถามทั่วไป</span></span>
             <span class="pi-ck"><i class="fa-solid fa-check"></i></span>
           </button>
           <button class="pop-item" id="mode-deep" onclick="setDeep(true)">
             <span class="pi-ic"><i class="fa-solid fa-lightbulb"></i></span>
-            <span class="pi-tx"><span class="pi-t">คิดลึก</span>
-              <span class="pi-d">วิเคราะห์โจทย์ → ร่างคำตอบ → ตรวจทาน</span></span>
+            <span class="pi-tx"><span class="pi-t">คิดลึก</span><span class="pi-d">วิเคราะห์โจทย์ → ร่างคำตอบ → ตรวจทาน</span></span>
             <span class="pi-ck"><i class="fa-solid fa-check"></i></span>
           </button>
           <div class="pop-div"></div>
@@ -350,7 +459,6 @@
           <div id="model-list"></div>
         </div>
 
-        <!-- POPUP: ปุ่ม + -->
         <div class="pop" id="pop-plus">
           <button class="pop-item" onclick="closePops(); newChat();">
             <span class="pi-ic"><i class="fa-solid fa-pen-to-square"></i></span>
@@ -358,8 +466,7 @@
           </button>
           <button class="pop-item" onclick="closePops(); openQuota();">
             <span class="pi-ic"><i class="fa-solid fa-database"></i></span>
-            <span class="pi-tx"><span class="pi-t">แหล่งข้อมูลและโควตา</span>
-              <span class="pi-d">ดูว่าใช้ API ไหนไปเท่าไหร่แล้ว</span></span>
+            <span class="pi-tx"><span class="pi-t">แหล่งข้อมูลและโควตา</span><span class="pi-d">ดูว่าใช้ API ไหนไปเท่าไหร่แล้ว</span></span>
           </button>
           <button class="pop-item" onclick="closePops(); loadModel();">
             <span class="pi-ic"><i class="fa-solid fa-rotate"></i></span>
@@ -368,18 +475,15 @@
         </div>
 
         <div class="composer">
-          <textarea id="input" rows="1" placeholder="ถาม Ceres ได้เลย"
-            onkeydown="onKey(event)" oninput="autoGrow(this)"></textarea>
+          <textarea id="input" rows="1" placeholder="ถาม Ceres ได้เลย" onkeydown="onKey(event)" oninput="autoGrow(this)"></textarea>
           <div class="bar">
-            <button class="cbtn" onclick="togglePop('pop-plus', this)" title="เพิ่มเติม">
-              <i class="fa-solid fa-plus"></i></button>
+            <button class="cbtn" onclick="togglePop('pop-plus', this)" title="เพิ่มเติม"><i class="fa-solid fa-plus"></i></button>
             <button class="pill" id="pill" onclick="togglePop('pop-model', this)">
               <span class="lbl" id="pill-lbl">กำลังเชื่อมต่อ</span>
               <i class="fa-solid fa-chevron-down cv"></i>
             </button>
             <div class="spacer"></div>
-            <button class="cbtn" id="mic" onclick="toggleMic()" title="พูดแทนพิมพ์">
-              <i class="fa-solid fa-microphone"></i></button>
+            <button class="cbtn" id="mic" onclick="toggleMic()" title="พูดแทนพิมพ์"><i class="fa-solid fa-microphone"></i></button>
             <button class="sendbtn" id="send" onclick="send()"><i class="fa-solid fa-arrow-up"></i></button>
           </div>
         </div>
@@ -401,9 +505,26 @@
     </div>
   </div>
 
+  <!-- ═══ FIREBASE SDK COMPAT ═══ -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script>
+    // ⚠️ นำค่า Firebase Config จาก Firebase Console ของคุณมาวางใส่ที่นี่
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
     const GAS_URL = "https://script.google.com/macros/s/AKfycbyjWTQnGyYF-qPn1Ax0G2z_CjebRIqr9DMvz8zQbQsKWjMoPPnqtAabXwXgeiuVRGkF/exec";
 
     if (typeof google === 'undefined' || !google.script || !google.script.run) {
@@ -411,7 +532,7 @@
       function mkRunner(ok, fail) {
         return new Proxy({}, { get(t, prop) {
           if (prop === 'withSuccessHandler') return (fn) => mkRunner(fn, fail);
-          if (prop === 'withFailureHandler') return (fn) => mkRunner(ok, fn);
+          if (prop === 'withFailureHandler') return (fn) => mkRunner(ok, fail);
           return function(...args) {
             fetch(GAS_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
               body: JSON.stringify({ action: prop, args: args }) })
@@ -439,6 +560,152 @@
       </svg>`;
     }
 
+    /* ═══ AUTH LOGIC ═══ */
+    auth.onAuthStateChanged((user) => {
+      const authScreen = document.getElementById('auth-screen');
+      const appScreen = document.getElementById('app');
+
+      if (user) {
+        authScreen.classList.add('hidden');
+        appScreen.classList.remove('hidden');
+        document.getElementById('user-display-email').textContent = user.displayName || user.email;
+        
+        // เมื่อล็อกอินสำเร็จ ดึงประวัติและเปิดแชทใหม่
+        loadSessions();
+        loadModel();
+      } else {
+        appScreen.classList.add('hidden');
+        authScreen.classList.remove('hidden');
+      }
+    });
+
+    function switchAuthView(view, e) {
+      if (e) e.preventDefault();
+      clearAuthAlert();
+      const loginForm = document.getElementById('form-login');
+      const regForm = document.getElementById('form-register');
+      const subtitle = document.getElementById('auth-subtitle');
+
+      if (view === 'register') {
+        loginForm.classList.add('hidden');
+        regForm.classList.remove('hidden');
+        subtitle.textContent = "สร้างบัญชีใหม่เพื่อเริ่มใช้งาน Ceres AI";
+      } else {
+        regForm.classList.add('hidden');
+        loginForm.classList.remove('hidden');
+        subtitle.textContent = "เข้าสู่ระบบเพื่อใช้งานผู้ช่วยส่วนตัว";
+      }
+    }
+
+    function togglePass(inputId, icon) {
+      const input = document.getElementById(inputId);
+      if (input.type === 'password') {
+        input.type = 'text';
+        icon.className = 'fa-regular fa-eye-slash toggle-eye';
+      } else {
+        input.type = 'password';
+        icon.className = 'fa-regular fa-eye toggle-eye';
+      }
+    }
+
+    function showAuthAlert(msg, type = 'error') {
+      const box = document.getElementById('auth-alert');
+      box.className = `auth-alert ${type}`;
+      box.textContent = msg;
+    }
+    function clearAuthAlert() {
+      const box = document.getElementById('auth-alert');
+      box.className = 'auth-alert';
+      box.textContent = '';
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      clearAuthAlert();
+      const email = document.getElementById('login-email').value.trim();
+      const password = document.getElementById('login-password').value;
+      const remember = document.getElementById('remember-me').checked;
+      const btn = document.getElementById('btn-login');
+
+      try {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังเข้าสู่ระบบ...';
+
+        const persistence = remember ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION;
+        await auth.setPersistence(persistence);
+        await auth.signInWithEmailAndPassword(email, password);
+
+      } catch (error) {
+        btn.disabled = false;
+        btn.innerHTML = '<span>เข้าสู่ระบบ</span>';
+        showAuthAlert(getFirebaseErrorMessage(error.code));
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      clearAuthAlert();
+      const name = document.getElementById('reg-name').value.trim();
+      const email = document.getElementById('reg-email').value.trim();
+      const password = document.getElementById('reg-password').value;
+      const confirm = document.getElementById('reg-confirm').value;
+      const btn = document.getElementById('btn-register');
+
+      if (password !== confirm) {
+        showAuthAlert("รหัสผ่านไม่ตรงกัน กรุณาตรวจสอบอีกครั้ง");
+        return;
+      }
+
+      try {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังสร้างบัญชี...';
+
+        const res = await auth.createUserWithEmailAndPassword(email, password);
+        if (res.user) {
+          await res.user.updateProfile({ displayName: name });
+        }
+      } catch (error) {
+        btn.disabled = false;
+        btn.innerHTML = '<span>สร้างบัญชีผู้ใช้</span>';
+        showAuthAlert(getFirebaseErrorMessage(error.code));
+      }
+    }
+
+    async function handleForgotPassword(e) {
+      e.preventDefault();
+      clearAuthAlert();
+      const email = document.getElementById('login-email').value.trim();
+      if (!email) {
+        showAuthAlert("กรุณากรอกอีเมลในช่องด้านบน แล้วกด 'ลืมรหัสผ่าน?' อีกครั้ง");
+        return;
+      }
+      try {
+        await auth.sendPasswordResetEmail(email);
+        showAuthAlert(`ส่งลิงก์รีเซ็ตรหัสผ่านไปที่ ${email} เรียบร้อยแล้ว`, "success");
+      } catch (error) {
+        showAuthAlert(getFirebaseErrorMessage(error.code));
+      }
+    }
+
+    function logout() {
+      if (confirm('คุณต้องการออกจากระบบหรือไม่?')) {
+        auth.signOut();
+      }
+    }
+
+    function getFirebaseErrorMessage(code) {
+      switch (code) {
+        case 'auth/invalid-email': return 'รูปแบบอีเมลไม่ถูกต้อง';
+        case 'auth/user-not-found': return 'ไม่พบบัญชีผู้ใช้งานนี้ในระบบ';
+        case 'auth/wrong-password': return 'รหัสผ่านไม่ถูกต้อง';
+        case 'auth/email-already-in-use': return 'อีเมลนี้ถูกใช้งานแล้วในระบบ';
+        case 'auth/weak-password': return 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร';
+        case 'auth/too-many-requests': return 'มีการพยายามเข้าสู่ระบบผิดหลายครั้ง กรุณาลองใหม่ในภายหลัง';
+        default: return 'เกิดข้อผิดพลาด: ' + code;
+      }
+    }
+
+    /* ═══ CHAT APPLICATION LOGIC ═══ */
     let sessions = [], curId = null, model = "", models = [], deepMode = false, busy = false;
 
     const STEP = { knowledge:'ค้นข้อมูลจากหลายแหล่ง', wiki:'ค้นข้อมูลจากหลายแหล่ง',
@@ -447,23 +714,21 @@
       hackernews:'ดึงข่าวไอที', country:'ค้นข้อมูลประเทศ', ip_lookup:'ตรวจสอบ IP' };
 
     window.onload = function() {
+      document.getElementById('auth-logo').innerHTML = logoSVG('lg');
       document.getElementById('side-logo').innerHTML = logoSVG('sm');
       marked.setOptions({ breaks:true, gfm:true, highlight:(c,l) => {
         try { return (l && hljs.getLanguage(l)) ? hljs.highlight(c,{language:l}).value : hljs.highlightAuto(c).value; }
         catch(e){ return c; } } });
-      loadSessions(); loadModel();
+
       document.addEventListener('click', e => {
         if (!e.target.closest('.pop') && !e.target.closest('.pill') && !e.target.closest('.cbtn')) closePops();
       });
     };
 
-    function toggleSide(){ document.getElementById('sidebar').classList.toggle('open');
-      document.getElementById('backdrop').classList.toggle('open'); }
-    function closeSide(){ document.getElementById('sidebar').classList.remove('open');
-      document.getElementById('backdrop').classList.remove('open'); }
+    function toggleSide(){ document.getElementById('sidebar').classList.toggle('open'); document.getElementById('backdrop').classList.toggle('open'); }
+    function closeSide(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('backdrop').classList.remove('open'); }
     function closeSideMobile(){ if (window.innerWidth <= 820) closeSide(); }
 
-    /* ═══ POPUP ═══ */
     function closePops() { document.querySelectorAll('.pop').forEach(p => p.classList.remove('open')); }
 
     function togglePop(id, anchor) {
@@ -485,13 +750,11 @@
       p.style.bottom = (wr.bottom - ar.top + 8) + 'px';
     }
 
-    /* ═══ SESSIONS ═══ */
-    // ===== [แก้ไขในจุดนี้] โหลดประวัติขึ้นแถบข้าง แล้วสร้างแชทใหม่ทันทีเสมอเมื่อเข้าเว็บ =====
     function loadSessions() {
       google.script.run.withSuccessHandler(db => {
         sessions = db || [];
         renderList();
-        newChat(); // สั่งสร้างและเปิดแชทใหม่ทันทีเสมอ
+        newChat(); // สั่งสร้างแชทใหม่ทันทีเสมอ
       }).withFailureHandler(e => { console.error(e); newChat(); }).getUserSessions();
     }
 
@@ -567,7 +830,6 @@
         </div>`;
     }
 
-    /* ═══ MODEL ═══ */
     function shortName(m) {
       let s = String(m).split('/').pop();
       s = s.replace(/-(instruct|it|chat)$/i, '');
@@ -630,7 +892,6 @@
       if (e.key === 'Enter' && !e.shiftKey && !mobile) { e.preventDefault(); send(); }
     }
 
-    /* ═══ MIC (Web Speech API) ═══ */
     let recog = null, recording = false;
     function toggleMic() {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -655,7 +916,6 @@
       recog.start();
     }
 
-    /* ═══ LIVE ═══ */
     function addLive() {
       const id = 'lv-' + Date.now();
       const t = document.getElementById('thread');
@@ -695,7 +955,6 @@
     function stepTo(h, i, txt) { renderSteps(h, i); if (txt) setLive(h, txt); }
     function rmLive(h) { if (!h) return; const el = document.getElementById(h.id); if (el) el.remove(); }
 
-    /* ═══ SEND ═══ */
     function send() {
       const inp = document.getElementById('input');
       const text = inp.value.trim();
@@ -782,13 +1041,11 @@
       if (res.success) {
         google.script.run.saveChatMessage(curId, 'assistant', res.reply, res.thinking, src || "");
         const s = cur();
-        if (s && s.messages) s.messages.push({ role:'assistant', thinking:res.thinking,
-          content:res.reply, source:src });
+        if (s && s.messages) s.messages.push({ role:'assistant', thinking:res.thinking, content:res.reply, source:src });
         addAI(res.thinking, res.reply, src, true, res.cached, tool);
       } else addAI('', res.reply, null, false);
     }
 
-    /* ═══ RENDER ═══ */
     function addUser(text) {
       const t = document.getElementById('thread');
       const d = document.createElement('div');
@@ -865,7 +1122,6 @@
         .deleteLastAssistantMessage(curId);
     }
 
-    /* ═══ QUOTA ═══ */
     function openQuota() {
       document.getElementById('quota-modal').classList.add('open');
       closeSideMobile();
@@ -907,7 +1163,6 @@
     }
 
     function closeQuota(){ document.getElementById('quota-modal').classList.remove('open'); }
-
     function md(t){ try { return marked.parse(t||''); } catch(e){ return esc(t||'').replace(/\n/g,'<br>'); } }
     function scrollDown(){ const s = document.getElementById('scroll'); s.scrollTop = s.scrollHeight; }
     function esc(t){ return String(t==null?'':t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
