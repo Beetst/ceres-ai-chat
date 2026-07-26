@@ -763,16 +763,23 @@
       google.script.run.withSuccessHandler(db => {
         sessions = db || [];
         renderList();
-        newChat(); 
-      }).withFailureHandler(e => { console.error(e); newChat(); }).getUserSessions();
+        if (sessions.length > 0) {
+          pick(sessions[0].id);
+        } else {
+          showDraftChat();
+        }
+      }).withFailureHandler(e => { console.error(e); showDraftChat(); }).getUserSessions();
     }
 
     function newChat() {
-      google.script.run.withSuccessHandler(s => {
-        sessions.unshift(s); curId = s.id; deepMode = false; interpreterMode = false; syncPill();
-        renderList(); openChat(); closeSideMobile();
-        document.getElementById('input').focus();
-      }).withFailureHandler(e => alert("สร้างแชทใหม่ไม่ได้: " + e)).createUserSession("แชทใหม่");
+      curId = null;
+      deepMode = false;
+      interpreterMode = false;
+      syncPill();
+      document.getElementById('thread').innerHTML = '';
+      showEmpty();
+      closeSideMobile();
+      document.getElementById('input').focus();
     }
 
     function pick(id) { closeSideMobile(); if (curId === id) return; curId = id; renderList(); openChat(); }
@@ -838,6 +845,15 @@
           <h1>สวัสดีค่ะ</h1>
           <p>ถามอะไรก็ได้ หรือเลือกโหมด "คิดลึก" จากปุ่มด้านล่าง เมื่ออยากให้ Ceres วิเคราะห์โจทย์ก่อนลงมือตอบ</p>
         </div>`;
+    }
+
+    function showDraftChat() {
+      curId = null;
+      deepMode = false;
+      interpreterMode = false;
+      syncPill();
+      document.getElementById('topbar-title').textContent = 'Ceres';
+      showEmpty();
     }
 
     /* ═══ MODEL ═══ */
@@ -995,6 +1011,28 @@
       if (!model) { alert("ยังไม่ได้เชื่อมต่อโมเดล เปิด LM Studio แล้วกดปุ่ม + → เชื่อมต่อโมเดลใหม่"); return; }
       closePops();
 
+      // ถ้ายังไม่มี session (curId === null) ให้สร้างเสียก่อน
+      if (!curId) {
+        const nt = text.length > 28 ? text.substring(0,28) + '…' : text;
+        google.script.run.withSuccessHandler(s => {
+          sessions.unshift(s);
+          curId = s.id;
+          deepMode = false;
+          interpreterMode = false;
+          syncPill();
+          renderList();
+          document.getElementById('topbar-title').textContent = nt;
+          
+          const em = document.querySelector('.empty'); if (em) em.remove();
+          addUser(text);
+          google.script.run.saveChatMessage(curId, 'user', text, '', '');
+          inp.value = ''; autoGrow(inp);
+          run(text);
+        }).withFailureHandler(e => alert("สร้างแชทใหม่ไม่ได้: " + e))
+          .createUserSession(nt);
+        return;
+      }
+
       const s = cur();
       if (s && (s.title === 'แชทใหม่' || !s.title)) {
         const nt = text.length > 28 ? text.substring(0,28) + '…' : text;
@@ -1146,13 +1184,13 @@
       };
 
       if (!stream) { done(); return; }
-      let i = 0; const stp = cached ? 7 : 2;
+      let i = 0; const stp = cached ? 20 : 8;
       const tm = setInterval(() => {
         i += stp;
         if (i >= text.length) { clearInterval(tm); done(); return; }
         body.innerHTML = md(text.substring(0,i)) + '<span class="cursor"></span>';
         scrollDown();
-      }, 14);
+      }, 5);
     }
 
     function regen() {
