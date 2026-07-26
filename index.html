@@ -1,3 +1,4 @@
+``html
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -165,7 +166,7 @@
       letter-spacing:-.02em; }
     .empty p { font-size:14.5px; color:var(--text-muted); max-width:410px; }
 
-    /* ═══ COMPOSER (Claude style) ═══ */
+    /* ═══ COMPOSER ═══ */
     .composer-wrap { padding:0 24px calc(14px + env(safe-area-inset-bottom)); flex-shrink:0; position:relative; }
     .composer {
       max-width:748px; margin:0 auto; background:var(--surface);
@@ -443,7 +444,7 @@
 
     const STEP = { knowledge:'ค้นข้อมูลจากหลายแหล่ง', wiki:'ค้นข้อมูลจากหลายแหล่ง',
       weather:'ตรวจสภาพอากาศ', crypto:'เทียบราคาคริปโต', currency:'เทียบอัตราแลกเปลี่ยน',
-      news:'ค้นข่าวล่าสุด', stock:'ดึงราคาหุ้น', browse:'อ่านหน้าเว็บ',
+      news:'ค้นข่าวล่าสุด', stock:'ดึงราคาหุ้นและข่าวสาร', browse:'อ่านหน้าเว็บ',
       hackernews:'ดึงข่าวไอที', country:'ค้นข้อมูลประเทศ', ip_lookup:'ตรวจสอบ IP' };
 
     window.onload = function() {
@@ -463,7 +464,7 @@
       document.getElementById('backdrop').classList.remove('open'); }
     function closeSideMobile(){ if (window.innerWidth <= 820) closeSide(); }
 
-    // ═══ POPUP ═══
+    /* ═══ POPUP ═══ */
     function closePops() { document.querySelectorAll('.pop').forEach(p => p.classList.remove('open')); }
 
     function togglePop(id, anchor) {
@@ -485,7 +486,7 @@
       p.style.bottom = (wr.bottom - ar.top + 8) + 'px';
     }
 
-    // ═══ SESSIONS ═══
+    /* ═══ SESSIONS ═══ */
     function loadSessions() {
       google.script.run.withSuccessHandler(db => {
         sessions = db || [];
@@ -566,7 +567,7 @@
         </div>`;
     }
 
-    // ═══ MODEL ═══
+    /* ═══ MODEL ═══ */
     function shortName(m) {
       let s = String(m).split('/').pop();
       s = s.replace(/-(instruct|it|chat)$/i, '');
@@ -629,7 +630,7 @@
       if (e.key === 'Enter' && !e.shiftKey && !mobile) { e.preventDefault(); send(); }
     }
 
-    // ═══ MIC (Web Speech API) ═══
+    /* ═══ MIC (Web Speech API) ═══ */
     let recog = null, recording = false;
     function toggleMic() {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -654,7 +655,7 @@
       recog.start();
     }
 
-    // ═══ LIVE ═══
+    /* ═══ LIVE ═══ */
     function addLive() {
       const id = 'lv-' + Date.now();
       const t = document.getElementById('thread');
@@ -694,7 +695,7 @@
     function stepTo(h, i, txt) { renderSteps(h, i); if (txt) setLive(h, txt); }
     function rmLive(h) { if (!h) return; const el = document.getElementById(h.id); if (el) el.remove(); }
 
-    // ═══ SEND ═══
+    /* ═══ SEND ═══ */
     function send() {
       const inp = document.getElementById('input');
       const text = inp.value.trim();
@@ -787,7 +788,7 @@
       } else addAI('', res.reply, null, false);
     }
 
-    // ═══ RENDER ═══
+    /* ═══ RENDER ═══ */
     function addUser(text) {
       const t = document.getElementById('thread');
       const d = document.createElement('div');
@@ -864,7 +865,7 @@
         .deleteLastAssistantMessage(curId);
     }
 
-    // ═══ QUOTA ═══
+    /* ═══ QUOTA ═══ */
     function openQuota() {
       document.getElementById('quota-modal').classList.add('open');
       closeSideMobile();
@@ -895,7 +896,7 @@
       else if (a.exhausted) st = '<span style="color:var(--danger);font-weight:600">โควตาเต็ม</span>';
       else if (a.unlimited) st = `ใช้แล้ว ${a.used} · ไม่จำกัด`;
       else { st = `${a.used} / ${a.limit}`;
-why:      if (a.providerRemaining != null) st += ` <span class="q-real">· เหลือจริง ${a.providerRemaining}</span>`; }
+      if (a.providerRemaining != null) st += ` <span class="q-real">· เหลือจริง ${a.providerRemaining}</span>`; }
       let h = `<div class="q-item ${off?'off':''}">
         <div class="q-top"><span class="q-name">${esc(a.label)}</span><span class="q-cnt">${st}</span></div>`;
       if (!a.unlimited) h += `<div class="q-bar"><div class="q-fill ${fill}" style="width:${a.percent}%"></div></div>`;
@@ -923,3 +924,4 @@ why:      if (a.providerRemaining != null) st += ` <span class="q-real">· เ�
   </script>
 </body>
 </html>
+```
