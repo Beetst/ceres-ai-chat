@@ -267,11 +267,19 @@
     .sendbtn {
       width:36px; height:36px; border-radius:50%; border:none; cursor:pointer;
       background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center;
-      font-size:14px; flex-shrink:0; transition:background .15s, transform .1s;
+      font-size:14px; flex-shrink:0; transition:background .15s, transform .1s; position:relative;
     }
     .sendbtn:hover { background:var(--accent-hover); }
     .sendbtn:active { transform:scale(.94); }
     .sendbtn:disabled { background:#ddd9cd; cursor:not-allowed; }
+    .sendbtn.busy { background:var(--accent); cursor:pointer; }
+    .sendbtn.busy::before {
+      content:''; position:absolute; inset:-4px; border-radius:50%;
+      border:2px solid rgba(201,100,66,.18); border-top-color:var(--accent);
+      animation:sendspin .85s linear infinite;
+    }
+    .stop-square { width:11px; height:11px; background:#fff; border-radius:3px; display:block; }
+    @keyframes sendspin { to { transform:rotate(360deg); } }
 
     .hint { max-width:748px; margin:9px auto 0; font-size:11.5px; color:#a5a294;
       text-align:center; user-select:none; }
@@ -501,7 +509,7 @@
             <div class="spacer"></div>
             <button class="cbtn" id="mic" onclick="toggleMic()" title="พูดแทนพิมพ์">
               <i class="fa-solid fa-microphone"></i></button>
-            <button class="sendbtn" id="send" onclick="send()"><i class="fa-solid fa-arrow-up"></i></button>
+            <button class="sendbtn" id="send" onclick="handleSendClick()"><i class="fa-solid fa-arrow-up"></i></button>
           </div>
         </div>
         <div class="hint">Ceres อาจตอบผิดพลาดได้ ควรตรวจสอบข้อมูลสำคัญอีกครั้ง</div>
@@ -701,6 +709,7 @@
 
     // เพิ่ม: ตัวแปร interpreterMode
     let sessions = [], curId = null, model = "", models = [], deepMode = false, interpreterMode = false, busy = false;
+    let activeGenId = 0; // ใช้เช็คว่าคำตอบที่กลับมาเป็นของรอบล่าสุดไหม (สำหรับปุ่มหยุด)
     const INTERP_SEP = "⟺⟺⟺"; // ต้องตรงกับ INTERPRETER_SEP ใน Code.gs
 
     const STEP = { knowledge:'ค้นข้อมูลจากหลายแหล่ง', wiki:'ค้นข้อมูลจากหลายแหล่ง',
@@ -1024,10 +1033,14 @@
       if (!model) { alert("ยังไม่ได้เชื่อมต่อโมเดล เปิด LM Studio แล้วกดปุ่ม + → เชื่อมต่อโมเดลใหม่"); return; }
       closePops();
 
+      const genId = ++activeGenId;
+      busy = true; updateSendButton();
+
       // ถ้ายังไม่มี session (curId === null) ให้สร้างเสียก่อน
       if (!curId) {
         const nt = text.length > 28 ? text.substring(0,28) + '…' : text;
         google.script.run.withSuccessHandler(s => {
+          if (genId !== activeGenId) return;
           sessions.unshift(s);
           curId = s.id;
           deepMode = false;
@@ -1040,8 +1053,8 @@
           addUser(text);
           google.script.run.saveChatMessage(curId, 'user', text, '', '');
           inp.value = ''; autoGrow(inp);
-          run(text);
-        }).withFailureHandler(e => alert("สร้างแชทใหม่ไม่ได้: " + e))
+          run(text, genId);
+        }).withFailureHandler(e => { unbusy(); alert("สร้างแชทใหม่ไม่ได้: " + e); })
           .createUserSession(nt);
         return;
       }
@@ -1058,79 +1071,119 @@
       addUser(text);
       google.script.run.saveChatMessage(curId, 'user', text, '', '');
       inp.value = ''; autoGrow(inp);
-      run(text);
+      run(text, genId);
     }
 
-    // แก้: run ให้ข้าม tool-planning เมื่ออยู่โหมดล่าม
-    function run(text) {
-      busy = true;
-      document.getElementById('send').disabled = true;
+    // ปุ่มส่ง: ถ้ากำลังตอบอยู่ → หยุด, ถ้าว่าง → ส่งข้อความ
+    function handleSendClick() {
+      if (busy) stopGeneration(); else send();
+    }
+
+    function updateSendButton() {
+      const btn = document.getElementById('send');
+      if (!btn) return;
+      if (busy) {
+        btn.classList.add('busy');
+        btn.title = 'หยุด';
+        btn.innerHTML = '<span class="stop-square"></span>';
+      } else {
+        btn.classList.remove('busy');
+        btn.title = '';
+        btn.innerHTML = '<i class="fa-solid fa-arrow-up"></i>';
+      }
+    }
+
+    // กดหยุด: ยกเลิกทุก callback ของรอบนี้ (แต่ backend ยังรันต่อจนจบอยู่ดี เพราะ Apps Script ยกเลิกกลางคันไม่ได้จริง)
+    function stopGeneration() {
+      activeGenId++;
+      document.querySelectorAll('[id^="lv-"]').forEach(el => el.remove());
+      unbusy();
+    }
+
+    function run(text, genId) {
       const h = addLive();
-      if (interpreterMode) { runInterpreter(text, h); return; }
+      if (interpreterMode) { runInterpreter(text, h, genId); return; }
       google.script.run
         .withSuccessHandler(plan => {
-          if (!plan || plan.tool === 'none') { afterTool(text, h, null); return; }
+          if (genId !== activeGenId) return;
+          if (!plan || plan.tool === 'none') { afterTool(text, h, null, genId); return; }
           setLive(h, STEP[plan.tool] || 'ดึงข้อมูล');
           google.script.run
-            .withSuccessHandler(tr => afterTool(text, h, tr && tr.success ? tr : null))
-            .withFailureHandler(() => afterTool(text, h, null))
+            .withSuccessHandler(tr => { if (genId !== activeGenId) return; afterTool(text, h, tr && tr.success ? tr : null, genId); })
+            .withFailureHandler(() => { if (genId !== activeGenId) return; afterTool(text, h, null, genId); })
             .fetchToolData(plan.tool, plan.params);
         })
-        .withFailureHandler(() => afterTool(text, h, null))
+        .withFailureHandler(() => { if (genId !== activeGenId) return; afterTool(text, h, null, genId); })
         .planToolUse(text, model);
     }
 
     // เพิ่ม: runInterpreter ฟังก์ชันใหม่
-    function runInterpreter(text, h) {
+    function runInterpreter(text, h, genId) {
       setLive(h, 'กำลังแปล');
-      google.script.run.withSuccessHandler(res => finish(res, h, null, null))
-        .withFailureHandler(err => { rmLive(h); unbusy(); addAI('','เชื่อมต่อไม่สำเร็จ: '+err,null,false); })
+      google.script.run.withSuccessHandler(res => { if (genId !== activeGenId) return; finish(res, h, null, null, genId); })
+        .withFailureHandler(err => {
+          if (genId !== activeGenId) return;
+          rmLive(h); unbusy(); addAI('','เชื่อมต่อไม่สำเร็จ: '+err,null,false);
+        })
         .sendMessageInterpreter(curId, text, model);
     }
 
-    function afterTool(text, h, tool) { deepMode ? runDeep(text,h,tool) : runNormal(text,h,tool); }
+    function afterTool(text, h, tool, genId) { deepMode ? runDeep(text,h,tool,genId) : runNormal(text,h,tool,genId); }
 
-    function runNormal(text, h, tool) {
+    function runNormal(text, h, tool, genId) {
       setLive(h, 'กำลังเรียบเรียงคำตอบ');
-      const ok = res => finish(res, h, tool ? tool.source : null, tool);
-      const fail = err => { rmLive(h); unbusy(); addAI('','เชื่อมต่อไม่สำเร็จ: '+err,null,false); };
+      const ok = res => { if (genId !== activeGenId) return; finish(res, h, tool ? tool.source : null, tool, genId); };
+      const fail = err => {
+        if (genId !== activeGenId) return;
+        rmLive(h); unbusy(); addAI('','เชื่อมต่อไม่สำเร็จ: '+err,null,false);
+      };
       if (tool) google.script.run.withSuccessHandler(ok).withFailureHandler(fail)
         .sendMessageToAIWithTool(curId, text, model, tool, {});
       else google.script.run.withSuccessHandler(ok).withFailureHandler(fail)
         .sendMessageToAI(curId, text, model, {});
     }
 
-    function runDeep(text, h, tool) {
+    function runDeep(text, h, tool, genId) {
       liveSteps(h, ['ทำความเข้าใจโจทย์', 'ร่างคำตอบตามแผน', 'ตรวจทานและปรับปรุง']);
       stepTo(h, 0, 'ตอบคำถามเกี่ยวกับโจทย์ก่อนลงมือ');
 
       google.script.run.withSuccessHandler(a => {
+        if (genId !== activeGenId) return;
         if (!a || !a.success) { rmLive(h); unbusy(); addAI('','วิเคราะห์โจทย์ไม่สำเร็จ',null,false); return; }
         stepTo(h, 1, 'ลงมือเขียนคำตอบ');
 
         google.script.run.withSuccessHandler(d => {
+          if (genId !== activeGenId) return;
           if (!d || !d.success) { rmLive(h); unbusy(); addAI('','ร่างคำตอบไม่สำเร็จ',null,false); return; }
           stepTo(h, 2, 'ตรวจหาจุดผิดพลาดและปรับปรุง');
 
           google.script.run.withSuccessHandler(f => {
+            if (genId !== activeGenId) return;
             if (!f || !f.success) { rmLive(h); unbusy(); addAI('','ตรวจทานไม่สำเร็จ',null,false); return; }
             const think = '◆ ทำความเข้าใจโจทย์\n' + a.plan +
               (d.draftThinking ? '\n\n◆ ระหว่างร่าง\n' + d.draftThinking : '') +
               '\n\n◆ ตรวจทาน\nตรวจสอบร่างกับแผนที่วางไว้ แก้จุดที่ตกหล่นแล้วเรียบเรียงใหม่';
-            finish({ success:true, reply:f.reply, thinking:think }, h, tool ? tool.source : null, tool);
-          }).withFailureHandler(e => { rmLive(h); unbusy(); addAI('','ตรวจทานล้มเหลว: '+e,null,false); })
-            .deepThinkRefine(curId, text, a.plan, d.draft, a.carry, model);
+            finish({ success:true, reply:f.reply, thinking:think }, h, tool ? tool.source : null, tool, genId);
+          }).withFailureHandler(e => {
+            if (genId !== activeGenId) return;
+            rmLive(h); unbusy(); addAI('','ตรวจทานล้มเหลว: '+e,null,false);
+          }).deepThinkRefine(curId, text, a.plan, d.draft, a.carry, model);
 
-        }).withFailureHandler(e => { rmLive(h); unbusy(); addAI('','ร่างคำตอบล้มเหลว: '+e,null,false); })
-          .deepThinkDraft(curId, text, a.plan, a.carry, model, tool);
+        }).withFailureHandler(e => {
+          if (genId !== activeGenId) return;
+          rmLive(h); unbusy(); addAI('','ร่างคำตอบล้มเหลว: '+e,null,false);
+        }).deepThinkDraft(curId, text, a.plan, a.carry, model, tool);
 
-      }).withFailureHandler(e => { rmLive(h); unbusy(); addAI('','วิเคราะห์ล้มเหลว: '+e,null,false); })
-        .deepThinkAnalyze(curId, text, model, tool);
+      }).withFailureHandler(e => {
+        if (genId !== activeGenId) return;
+        rmLive(h); unbusy(); addAI('','วิเคราะห์ล้มเหลว: '+e,null,false);
+      }).deepThinkAnalyze(curId, text, model, tool);
     }
 
-    function unbusy() { busy = false; document.getElementById('send').disabled = false; }
+    function unbusy() { busy = false; updateSendButton(); }
 
-    function finish(res, h, src, tool) {
+    function finish(res, h, src, tool, genId) {
+      if (genId !== undefined && genId !== activeGenId) return;
       rmLive(h); unbusy();
       if (res.success) {
         google.script.run.saveChatMessage(curId, 'assistant', res.reply, res.thinking, src || "");
@@ -1223,8 +1276,12 @@
       if (s && s.messages) for (let i = s.messages.length-1; i >= 0; i--)
         if (s.messages[i].role === 'user') { last = s.messages[i].content; break; }
       if (!last) return;
-      google.script.run.withSuccessHandler(() => { openChat(); setTimeout(() => run(last), 350); })
-        .withFailureHandler(e => alert("ลบคำตอบเดิมไม่สำเร็จ: " + e))
+      const genId = ++activeGenId;
+      busy = true; updateSendButton();
+      google.script.run.withSuccessHandler(() => {
+        if (genId !== activeGenId) return;
+        openChat(); setTimeout(() => run(last, genId), 350);
+      }).withFailureHandler(e => { unbusy(); alert("ลบคำตอบเดิมไม่สำเร็จ: " + e); })
         .deleteLastAssistantMessage(curId);
     }
 
