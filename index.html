@@ -486,11 +486,12 @@
     }
 
     /* ═══ SESSIONS ═══ */
+    // ===== [แก้ไขในจุดนี้] โหลดประวัติขึ้นแถบข้าง แล้วสร้างแชทใหม่ทันทีเสมอเมื่อเข้าเว็บ =====
     function loadSessions() {
       google.script.run.withSuccessHandler(db => {
         sessions = db || [];
-        if (!sessions.length) newChat();
-        else { curId = sessions[0].id; renderList(); openChat(); }
+        renderList();
+        newChat(); // สั่งสร้างและเปิดแชทใหม่ทันทีเสมอ
       }).withFailureHandler(e => { console.error(e); newChat(); }).getUserSessions();
     }
 
